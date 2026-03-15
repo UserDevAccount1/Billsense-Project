@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillSense API Documentation for Android Client</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #2c3e50;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--box-shadow);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo-icon {
+            margin-right: 10px;
+            font-size: 1.8rem;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav ul li {
+            margin-left: 1.5rem;
+        }
+        
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            transition: var(--transition);
+            padding: 5px 10px;
+            border-radius: var(--border-radius);
+        }
+        
+        nav ul li a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            font-weight: bold;
+            transition: var(--transition);
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background-color: #c0392b;
+            transform: translateY(-2px);
+        }
+        
+        .section {
+            padding: 3rem 0;
+            background-color: white;
+            margin-bottom: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+        
+        .section-title {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            color: var(--secondary-color);
+            border-bottom: 2px solid var(--light-color);
+            padding-bottom: 0.5rem;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: var(--transition);
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-title {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+        
+        .code-block {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .endpoint {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.8rem;
+            background-color: var(--light-color);
+            border-radius: var(--border-radius);
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: var(--border-radius);
+            font-weight: bold;
+            margin-right: 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .get { background-color: #61affe; color: white; }
+        .post { background-color: #49cc90; color: white; }
+        .put { background-color: #fca130; color: white; }
+        .delete { background-color: #f93e3e; color: white; }
+        .websocket { background-color: #9012fe; color: white; }
+        
+        .endpoint-url {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        .table th, .table td {
+            padding: 0.8rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .table th {
+            background-color: var(--light-color);
+            font-weight: bold;
+        }
+        
+        .table tr:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .status-success { background-color: var(--success-color); color: white; }
+        .status-warning { background-color: var(--warning-color); color: white; }
+        .status-error { background-color: var(--danger-color); color: white; }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 1rem;
+        }
+        
+        .tab {
+            padding: 0.8rem 1.5rem;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: var(--transition);
+        }
+        
+        .tab.active {
+            border-bottom: 3px solid var(--primary-color);
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .accordion {
+            margin-bottom: 1rem;
+        }
+        
+        .accordion-header {
+            padding: 1rem;
+            background-color: var(--light-color);
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: var(--transition);
+        }
+        
+        .accordion-header:hover {
+            background-color: #dfe6e9;
+        }
+        
+        .accordion-content {
+            padding: 1rem;
+            border: 1px solid var(--light-color);
+            border-top: none;
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            display: none;
+        }
+        
+        .accordion.active .accordion-content {
+            display: block;
+        }
+        
+        .accordion.active .accordion-header {
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .feature-item {
+            background-color: var(--light-color);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            text-align: center;
+            transition: var(--transition);
+        }
+        
+        .feature-item:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--box-shadow);
+        }
+        
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+        
+        footer {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        
+        .footer-section {
+            flex: 1;
+            min-width: 250px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .footer-section h3 {
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        
+        .footer-section ul {
+            list-style: none;
+        }
+        
+        .footer-section ul li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .footer-section ul li a {
+            color: #ddd;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+        
+        .footer-section ul li a:hover {
+            color: white;
+        }
+        
+        .copyright {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .new-badge {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-left: 0.5rem;
+            vertical-align: super;
+        }
+        
+        .improvement {
+            background-color: #e8f5e8;
+            border-left: 4px solid var(--success-color);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+        }
+        
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+            }
+            
+            nav ul {
+                margin-top: 1rem;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            nav ul li {
+                margin: 0.5rem;
+            }
+            
+            .hero h1 {
+                font-size: 2rem;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-content {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">💰</span>
+                    <span>BillSense API Documentation</span>
+                </div>
+                <nav>
+                    <ul>
+                        <li><a href="#overview">Overview</a></li>
+                        <li><a href="#websocket">WebSocket</a></li>
+                        <li><a href="#http">HTTP API</a></li>
+                        <li><a href="#implementation">Implementation</a></li>
+                        <li><a href="#testing">Testing</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>BillSense API Documentation for Android Client</h1>
+            <p>Complete integration guide for real-time Philippine currency detection system using computer vision to authenticate banknotes</p>
+            <div class="improvement">
+                <strong>🚀 NEW IN VERSION 17.0:</strong> Parallel Processing, Auto-Start WebSockets, 40-60% Faster Detection
+            </div>
+            <a href="#implementation" class="btn">Get Started</a>
+        </div>
+    </section>
+
+    <div class="container">
+        <section id="overview" class="section">
+            <h2 class="section-title">🎯 Overview</h2>
+            <div class="card">
+                <p>BillSense is a real-time Philippine currency detection system that uses computer vision to authenticate banknotes. The API provides both WebSocket-based real-time scanning and traditional HTTP endpoints for bill analysis.</p>
+                
+                <div class="improvement">
+                    <strong>⚡ Performance Upgrade:</strong> Version 17.0 introduces parallel model execution with 40-60% faster processing times and auto-start WebSocket connections.
+                </div>
+                
+                <h3 class="card-title" style="margin-top: 1.5rem;">Key Features</h3>
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Parallel Processing <span class="new-badge">NEW</span></h3>
+                        <p>All 6 YOLO models run simultaneously for faster results</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🚀</div>
+                        <h3>Auto-Start WebSockets <span class="new-badge">NEW</span></h3>
+                        <p>Immediate scanning on connection - no START command needed</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🔄</div>
+                        <h3>Multi-angle Analysis</h3>
+                        <p>Comprehensive feature detection from different angles</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🎥</div>
+                        <h3>Video Stream Processing</h3>
+                        <p>Dynamic bill analysis from video feeds</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🔥</div>
+                        <h3>Firebase Integration</h3>
+                        <p>Seamless result storage and retrieval</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">📊</div>
+                        <h3>Quality Assessment</h3>
+                        <p>Real-time feedback on image quality</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">🔗 API Base URLs</h3>
+                <div class="endpoint">
+                    <span class="method get">HTTP</span>
+                    <span class="endpoint-url">https://billsense-api-340624938055.asia-southeast2.run.app</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method websocket">WebSocket</span>
+                    <span class="endpoint-url">wss://billsense-api-340624938055.asia-southeast2.run.app</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">🎯 What's New in Version 17.0</h3>
+                <ul>
+                    <li><strong>Parallel Model Execution:</strong> All 6 YOLO models run simultaneously</li>
+                    <li><strong>Auto-Start WebSockets:</strong> Scanning begins immediately on connection</li>
+                    <li><strong>40-60% Performance Boost:</strong> Faster detection and analysis</li>
+                    <li><strong>Simplified Client Code:</strong> No more START commands needed</li>
+                    <li><strong>Optimized Resource Usage:</strong> Better CPU utilization with 4 cores</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="websocket" class="section">
+            <h2 class="section-title">🔌 Real-Time WebSocket Endpoints <span class="new-badge">AUTO-START</span></h2>
+            
+            <div class="tabs">
+                <div class="tab active" data-tab="standard">Standard Scan</div>
+                <div class="tab" data-tab="multi">Multi-Angle Scan</div>
+                <div class="tab" data-tab="video">Video Scan</div>
+            </div>
+            
+            <div class="tab-content active" id="standard">
+                <div class="card">
+                    <h3 class="card-title">Standard Real-Time Scan <span class="new-badge">AUTO-START</span></h3>
+                    <div class="endpoint">
+                        <span class="method websocket">WebSocket</span>
+                        <span class="endpoint-url">/ws/standard-scan</span>
+                    </div>
+                    
+                    <div class="improvement">
+                        <strong>🔄 Simplified Flow:</strong> Connection automatically starts scanning - just send frames!
+                    </div>
+                    
+                    <h4>Connection Flow (Simplified)</h4>
+                    <div class="code-block">
+// 1. Establish WebSocket connection (AUTO-STARTS SCANNING)
+OkHttpClient client = new OkHttpClient();
+Request request = new Request.Builder()
+    .url("wss://billsense-api-340624938055.asia-southeast2.run.app/ws/standard-scan")
+    .build();
+
+WebSocket webSocket = client.newWebSocket(request, new WebSocketListener() {
+    @Override
+    public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+        // ✅ Connection established - SCANNING AUTOMATICALLY STARTED
+        // No need to send START_SCAN command anymore!
+    }
+    
+    @Override
+    public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
+        JSONObject response = new JSONObject(text);
+        String status = response.getString("status");
+        
+        if ("analyzing".equals(status)) {
+            // Real-time analysis data
+            updateUIWithResults(response);
+        } else if ("complete".equals(status)) {
+            // Final results
+            handleFinalResults(response);
+        }
+    }
+});
+                    </div>
+                    
+                    <h4>Simplified Commands Sequence</h4>
+                    <div class="code-block">
+// OLD WAY (Version 16.0):
+// webSocket.send("START_SCAN");
+// webSocket.send("data:image/jpeg;base64,/9j/4AAQSkZJRg...");
+// webSocket.send("COMPLETE_SCAN");
+
+// NEW WAY (Version 17.0 - AUTO-START):
+webSocket.send("data:image/jpeg;base64,/9j/4AAQSkZJRg..."); // Send frames immediately
+webSocket.send("data:image/jpeg;base64,/9j/4AAQSkZJRg..."); // Continue sending
+webSocket.send("COMPLETE_SCAN"); // When user is satisfied
+                    </div>
+                    
+                    <h4>Expected Responses</h4>
+                    <div class="accordion">
+                        <div class="accordion-header">
+                            <span>Auto-Start Response</span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <div class="code-block">
+{
+  "status": "scanning",
+  "message": "🔄 Automatic scanning started - send frames for real-time detection"
+}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion">
+                        <div class="accordion-header">
+                            <span>Real-Time Analysis Response <span class="new-badge">PARALLEL</span></span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <div class="code-block">
+{
+  "status": "analyzing",
+  "frame_number": 3,
+  "message": "Real-time detection - Frame 3",
+  "denomination": "100",
+  "features_detected": ["watermark", "security_thread", "value"],
+  "feature_count": 3,
+  "total_expected_features": 6,
+  "coverage_percentage": 50.0,
+  "confidence_score": 65.5,
+  "authenticity": "ANALYZING",
+  "is_genuine": false,
+  "is_high_denomination": false,
+  "has_false_evp": false,
+  "quality_metrics": {
+    "sharpness": 145.23,
+    "brightness": 124.56,
+    "contrast": 42.34,
+    "sharpness_score": 72.6,
+    "brightness_score": 92.1,
+    "contrast_score": 78.9,
+    "overall_quality": 81.2,
+    "quality_status": "EXCELLENT"
+  },
+  "processing_mode": "parallel",  // ✅ NEW: Indicates parallel processing
+  "recommendation": "Position bill to detect more features, then press Complete Scan"
+}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="accordion">
+                        <div class="accordion-header">
+                            <span>Complete Scan Response</span>
+                            <span>+</span>
+                        </div>
+                        <div class="accordion-content">
+                            <div class="code-block">
+{
+  "scan_id": "88fe84a0-2416-4edf-88ef-0596486babfb",
+  "status": "complete",
+  "authenticity": "GENUINE",
+  "is_genuine": true,
+  "denomination": "100",
+  "features_detected": ["watermark", "security_thread", "serial_number", "value", "concealed_value"],
+  "feature_count": 5,
+  "total_expected_features": 6,
+  "coverage_percentage": 83.33,
+  "confidence": "HIGH",
+  "frames_processed": 8,
+  "processing_time": 4.23,  // ✅ FASTER: Reduced from 8-12 seconds
+  "annotated_image_url": "https://storage.googleapis.com/.../annotated.jpg",
+  "processing_mode": "parallel"  // ✅ NEW: Parallel processing used
+}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="multi">
+                <div class="card">
+                    <h3 class="card-title">Multi-Angle Real-Time Scan <span class="new-badge">AUTO-START</span></h3>
+                    <div class="endpoint">
+                        <span class="method websocket">WebSocket</span>
+                        <span class="endpoint-url">/ws/real-multi-scan</span>
+                    </div>
+                    
+                    <h4>Simplified Connection Flow</h4>
+                    <div class="code-block">
+WebSocket multiSocket = client.newWebSocket(
+    new Request.Builder()
+        .url("wss://billsense-api-340624938055.asia-southeast2.run.app/ws/real-multi-scan")
+        .build(),
+    new WebSocketListener() {
+        @Override
+        public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+            // ✅ AUTO-STARTED - Ready for angle captures immediately
+        }
+        
+        @Override
+        public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
+            JSONObject response = new JSONObject(text);
+            if ("angle_captured".equals(response.getString("status"))) {
+                handleAngleResult(response);
+            }
+        }
+    }
+);
+                    </div>
+                    
+                    <h4>Simplified Commands Sequence</h4>
+                    <div class="code-block">
+// OLD: multiSocket.send("START_MULTI_SCAN");
+// NEW: Connection auto-starts!
+
+// Capture angles (1-3) immediately
+multiSocket.send("ANGLE_1:data:image/jpeg;base64,...");
+multiSocket.send("ANGLE_2:data:image/jpeg;base64,..."); 
+multiSocket.send("ANGLE_3:data:image/jpeg;base64,...");
+
+// Complete scan (or auto-completes after 3 angles)
+multiSocket.send("COMPLETE_MULTI_SCAN");
+                    </div>
+                    
+                    <h4>Angle Capture Response</h4>
+                    <div class="code-block">
+{
+  "status": "angle_captured",
+  "angle_number": 1,
+  "total_angles": 3,
+  "features_this_angle": ["watermark", "value"],
+  "all_features": ["watermark", "value"],
+  "denomination": "500",
+  "feature_count_this_angle": 2,
+  "total_features_so_far": 2,
+  "message": "✅ Angle 1 captured - 2 features found",
+  "progress": 33.33,
+  "coverage_percentage": 22.22,
+  "quality_metrics": {...},
+  "processing_mode": "parallel"  // ✅ NEW
+}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="video">
+                <div class="card">
+                    <h3 class="card-title">Video Real-Time Scan <span class="new-badge">AUTO-START</span></h3>
+                    <div class="endpoint">
+                        <span class="method websocket">WebSocket</span>
+                        <span class="endpoint-url">/ws/real-video-scan</span>
+                    </div>
+                    
+                    <h4>Simplified Connection Flow</h4>
+                    <div class="code-block">
+WebSocket videoSocket = client.newWebSocket(
+    new Request.Builder()
+        .url("wss://billsense-api-340624938055.asia-southeast2.run.app/ws/real-video-scan")
+        .build(),
+    new WebSocketListener() {
+        @Override
+        public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+            // ✅ AUTO-STARTED - Recording begins immediately!
+        }
+    }
+);
+                    </div>
+                    
+                    <h4>Simplified Commands Sequence</h4>
+                    <div class="code-block">
+// OLD: videoSocket.send("START_RECORDING");
+// NEW: Connection auto-starts recording!
+
+// Send continuous frames immediately (every 500ms recommended)
+videoSocket.send("data:image/jpeg;base64,...");
+videoSocket.send("data:image/jpeg;base64,...");
+
+// Stop recording and get analysis
+videoSocket.send("STOP_RECORDING");
+                    </div>
+                    
+                    <h4>Real-Time Video Analysis Response</h4>
+                    <div class="code-block">
+{
+  "status": "recording",
+  "is_recording": true,
+  "frames_processed": 15,
+  "current_confidence": 78.5,
+  "best_confidence": 82.3,  // ✅ IMPROVED: Higher confidence with parallel processing
+  "features_detected": ["watermark", "security_thread", "serial_number", "value"],
+  "denomination": "1000",
+  "authenticity": "ANALYZING",
+  "feature_count": 4,
+  "quality_metrics": {...},
+  "processing_mode": "parallel",  // ✅ NEW
+  "message": "Analyzing frame 15 - 78.5% confidence"
+}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="http" class="section">
+            <h2 class="section-title">🌐 HTTP API Endpoints <span class="new-badge">PARALLEL</span></h2>
+            
+            <div class="card">
+                <h3 class="card-title">Standard Scan <span class="new-badge">PARALLEL PROCESSING</span></h3>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-url">/api/standard-scan</span>
+                </div>
+                
+                <div class="improvement">
+                    <strong>⚡ Performance Boost:</strong> HTTP endpoints now use parallel processing for 40-60% faster responses.
+                </div>
+                
+                <h4>Android Implementation</h4>
+                <div class="code-block">
+// Android implementation (unchanged interface, faster performance)
+public void uploadImageForAnalysis(File imageFile) {
+    OkHttpClient client = new OkHttpClient();
+    
+    RequestBody requestBody = new MultipartBody.Builder()
+        .setType(MultipartBody.FORM)
+        .addFormDataPart("file", imageFile.getName(),
+            RequestBody.create(imageFile, MediaType.parse("image/jpeg")))
+        .addFormDataPart("user_id", "android_user_123")
+        .build();
+
+    Request request = new Request.Builder()
+        .url("https://billsense-api-340624938055.asia-southeast2.run.app/api/standard-scan")
+        .post(requestBody)
+        .build();
+
+    client.newCall(request).enqueue(new Callback() {
+        @Override
+        public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+            if (response.isSuccessful()) {
+                String responseData = response.body().string();
+                JSONObject result = new JSONObject(responseData);
+                // Process result - now 40-60% faster!
+            }
+        }
+        
+        @Override
+        public void onFailure(@NonNull Call call, @NonNull IOException e) {
+            // Handle error
+        }
+    });
+}
+                </div>
+                
+                <h4>Response Format (Enhanced)</h4>
+                <div class="code-block">
+{
+  "scan_id": "uuid-string",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "analysis_type": "standard_scan",
+  "denomination": "500",
+  "authenticity": {
+    "is_genuine": true,
+    "status": "GENUINE",
+    "confidence": "HIGH",
+    "reasons": ["All 9 security features verified - GENUINE HIGH DENOMINATION NOTE"],
+    "coverage_percentage": 100.0,
+    "detected_features_count": 9,
+    "total_expected_features": 9
+  },
+  "security_features": {
+    "concealed_value": true,
+    "security_thread": true,
+    "serial_number": true,
+    "value": true,
+    "watermark": true,
+    "see_through_mark": true,
+    "optically_variable_ink": true,
+    "ovd": true,
+    "enhanced_value_panel": true
+  },
+  "is_high_denomination": true,
+  "coverage_percentage": 100.0,
+  "processing_time": 4.12,  // ✅ IMPROVED: Reduced from 8-10 seconds
+  "annotated_image_url": "https://storage.googleapis.com/.../annotated.jpg",
+  "processing_mode": "parallel",  // ✅ NEW: Indicates parallel processing used
+  "model_info": "Multi-Model Ensemble (6 models) - PARALLEL"
+}
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">Health Check</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-url">/api/health</span>
+                </div>
+                
+                <h4>Response Format (Updated)</h4>
+                <div class="code-block">
+{
+  "status": "healthy",
+  "models_loaded": true,
+  "firebase_available": true,
+  "api_version": "17.0",  // ✅ UPDATED
+  "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
+  "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
+  "real_time_endpoints": [
+    "/ws/standard-scan",
+    "/ws/real-multi-scan", 
+    "/ws/real-video-scan"
+  ],
+  "processing_mode": "PARALLEL",  // ✅ NEW
+  "auto_start": "ENABLED for all WebSocket scans"
+}
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">Real-Time Status</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-url">/api/real-time-status</span>
+                </div>
+                
+                <h4>Response Format (New Endpoint)</h4>
+                <div class="code-block">
+{
+  "real_time_scanning": {
+    "standard_scan": {
+      "endpoint": "/ws/standard-scan",
+      "features": [
+        "AUTO-START on connection",
+        "PARALLEL model execution", 
+        "Real-time simultaneous results",
+        "Manual COMPLETE_SCAN only",
+        "40-60% faster processing"
+      ],
+      "user_flow": "Connect → Auto-start → See real-time results → Press Complete when ready"
+    }
+    // ... other endpoints
+  },
+  "processing_improvements": {
+    "mode": "PARALLEL_EXECUTION",
+    "models_running": "Simultaneously",
+    "performance": "40-60% faster",
+    "results_delivery": "All data simultaneously"
+  }
+}
+                </div>
+            </div>
+        </section>
+
+        <section id="implementation" class="section">
+            <h2 class="section-title">📱 Mobile-Specific Implementation</h2>
+            
+            <div class="card">
+                <h3 class="card-title">Simplified WebSocket Implementation <span class="new-badge">AUTO-START</span></h3>
+                <div class="code-block">
+// NEW: Simplified WebSocket implementation with auto-start
+public class BillSenseWebSocket {
+    private WebSocket webSocket;
+    private boolean isConnected = false;
+    
+    public void connectStandardScan() {
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+            .url("wss://billsense-api-340624938055.asia-southeast2.run.app/ws/standard-scan")
+            .build();
+            
+        webSocket = client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+                isConnected = true;
+                // ✅ AUTO-STARTED - No need to send START_SCAN!
+                runOnUiThread(() -> showMessage("🔄 Scanning started automatically"));
+            }
+            
+            @Override
+            public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
+                JSONObject response = new JSONObject(text);
+                String status = response.getString("status");
+                
+                runOnUiThread(() -> {
+                    if ("analyzing".equals(status)) {
+                        updateRealTimeResults(response);
+                    } else if ("complete".equals(status)) {
+                        handleFinalResult(response);
+                        disconnect();
+                    }
+                });
+            }
+            
+            @Override
+            public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
+                isConnected = false;
+            }
+        });
+    }
+    
+    public void sendFrame(Bitmap frame) {
+        if (isConnected && webSocket != null) {
+            String base64 = bitmapToBase64(frame);
+            webSocket.send("data:image/jpeg;base64," + base64);
+        }
+    }
+    
+    public void completeScan() {
+        if (isConnected && webSocket != null) {
+            webSocket.send("COMPLETE_SCAN");
+        }
+    }
+}
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">Performance Optimization</h3>
+                <div class="code-block">
+// Frame rate control optimized for parallel processing
+private final long OPTIMAL_FRAME_INTERVAL = 400; // milliseconds (was 500ms)
+private long lastFrameTime = 0;
+
+private void sendFrameIfReady(String base64Frame) {
+    long currentTime = System.currentTimeMillis();
+    if (currentTime - lastFrameTime >= OPTIMAL_FRAME_INTERVAL) {
+        webSocket.send(base64Frame);
+        lastFrameTime = currentTime;
+        
+        // ✅ Can send frames more frequently due to faster processing
+        if (currentConfidence > 80) {
+            // High confidence - can slow down frame rate
+            OPTIMAL_FRAME_INTERVAL = 600;
+        }
+    }
+}
+
+// Memory management for parallel processing
+private void optimizeForParallel() {
+    // Use smaller images since processing is faster
+    Bitmap optimizedBitmap = Bitmap.createScaledBitmap(
+        originalBitmap, 800, 600, true
+    );
+    sendFrame(optimizedBitmap);
+}
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">User Experience Improvements</h3>
+                <div class="code-block">
+// NEW: Simplified user flow with auto-start
+public void startScanning() {
+    // Old flow (Version 16.0):
+    // 1. connectWebSocket()
+    // 2. wait for connection
+    // 3. send START_SCAN
+    // 4. start sending frames
+    
+    // New flow (Version 17.0):
+    connectWebSocket(); // Auto-starts scanning on connection
+    // Immediately start sending frames!
+    
+    showUserMessage("Scanning started automatically - point camera at bill");
+}
+
+// Handle auto-start responses
+private void handleWebSocketMessage(JSONObject message) {
+    String status = message.optString("status");
+    String processingMode = message.optString("processing_mode", "sequential");
+    
+    if ("parallel".equals(processingMode)) {
+        // ✅ Show user that parallel processing is active
+        showParallelProcessingIndicator();
+    }
+    
+    switch (status) {
+        case "scanning":
+            // Auto-started successfully
+            updateUIForAutoStart();
+            break;
+        case "analyzing":
+            updateRealTimeResults(message);
+            break;
+        case "complete":
+            handleFinalResults(message);
+            break;
+    }
+}
+                </div>
+            </div>
+        </section>
+
+        <section id="testing" class="section">
+            <h2 class="section-title">🧪 Testing Guidelines</h2>
+            
+            <div class="card">
+                <h3 class="card-title">Test Scenarios</h3>
+                <ul>
+                    <li><strong>Standard Scan Test:</strong> Genuine 100 PHP bill, Counterfeit bill (photocopy), Different lighting conditions</li>
+                    <li><strong>Multi-Scan Test:</strong> Front, tilted, and back angles, Partial bill visibility, Mixed denominations</li>
+                    <li><strong>Video Scan Test:</strong> Steady camera movement, Quick panning, Variable lighting</li>
+                    <li><strong>Performance Test:</strong> Compare processing times with previous version</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">Expected Performance Improvements</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Scan Type</th>
+                            <th>Version 16.0</th>
+                            <th>Version 17.0</th>
+                            <th>Improvement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Standard Scan</td>
+                            <td>8-12 seconds</td>
+                            <td>4-7 seconds</td>
+                            <td><span class="status-badge status-success">40% faster</span></td>
+                        </tr>
+                        <tr>
+                            <td>Multi-Scan</td>
+                            <td>15-20 seconds</td>
+                            <td>8-12 seconds</td>
+                            <td><span class="status-badge status-success">50% faster</span></td>
+                        </tr>
+                        <tr>
+                            <td>Video Scan</td>
+                            <td>10-15 seconds</td>
+                            <td>5-9 seconds</td>
+                            <td><span class="status-badge status-success">45% faster</span></td>
+                        </tr>
+                        <tr>
+                            <td>WebSocket Response</td>
+                            <td>800-1200ms</td>
+                            <td>400-700ms</td>
+                            <td><span class="status-badge status-success">50% faster</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="card">
+                <h3 class="card-title">Migration Checklist</h3>
+                <ul>
+                    <li>✅ Remove all <code>START_SCAN</code>, <code>START_MULTI_SCAN</code>, <code>START_RECORDING</code> commands</li>
+                    <li>✅ Update WebSocket URL connections to auto-start endpoints</li>
+                    <li>✅ Handle new <code>"scanning"</code> status for auto-start confirmation</li>
+                    <li>✅ Look for <code>"processing_mode": "parallel"</code> in responses</li>
+                    <li>✅ Adjust frame timing (can send more frequently)</li>
+                    <li>✅ Update user messaging for auto-start flow</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>BillSense API</h3>
+                    <p>Real-time Philippine currency detection system using computer vision to authenticate banknotes.</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="#overview">Overview</a></li>
+                        <li><a href="#websocket">WebSocket Endpoints</a></li>
+                        <li><a href="#http">HTTP API</a></li>
+                        <li><a href="#implementation">Implementation</a></li>
+                        <li><a href="#testing">Testing</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>API Information</h3>
+                    <ul>
+                        <li>Version: <strong>17.0</strong> <span class="new-badge">NEW</span></li>
+                        <li>Base URL: https://billsense-api-340624938055.asia-southeast2.run.app</li>
+                        <li>WebSocket URL: wss://billsense-api-340624938055.asia-southeast2.run.app</li>
+                        <li>Processing: <strong>Parallel Execution</strong></li>
+                        <li>WebSocket: <strong>Auto-Start</strong></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="copyright">
+                <p>&copy; 2024 BillSense API Documentation. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Tab functionality
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs and contents
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                // Add active class to clicked tab and corresponding content
+                tab.classList.add('active');
+                const tabId = tab.getAttribute('data-tab');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+        
+        // Accordion functionality
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const accordion = header.parentElement;
+                accordion.classList.toggle('active');
+                
+                // Toggle the + and - icon
+                const icon = header.querySelector('span:last-child');
+                icon.textContent = accordion.classList.contains('active') ? '-' : '+';
+            });
+        });
+        
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

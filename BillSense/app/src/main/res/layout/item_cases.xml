@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/rounded_dialog_bg"
+    android:backgroundTint="@color/colorPrimary"
+    android:layout_margin="10dp"
+    android:padding="16dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- Title -->
+            <TextView
+                android:id="@+id/textViewCaseTitleLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/title_case"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textStyle="bold"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/textViewCaseTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintBaseline_toBaselineOf="@id/textViewCaseTitleLabel"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toEndOf="@id/textViewCaseTitleLabel"
+                app:layout_constraintTop_toTopOf="@id/textViewCaseTitleLabel"
+                tools:text="" />
+
+            <!-- User Name -->
+            <TextView
+                android:id="@+id/textViewUserNameLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/reported_by"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textStyle="bold"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/textViewCaseTitle" />
+
+            <TextView
+                android:id="@+id/textViewUserName"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintBaseline_toBaselineOf="@id/textViewUserNameLabel"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toEndOf="@id/textViewUserNameLabel"
+                app:layout_constraintTop_toTopOf="@id/textViewUserNameLabel"
+                />
+
+            <!-- Address -->
+            <TextView
+                android:id="@+id/textViewAddressLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/location"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textStyle="bold"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/textViewUserName" />
+
+            <TextView
+                android:id="@+id/textViewAddress"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toEndOf="@id/textViewAddressLabel"
+                app:layout_constraintTop_toTopOf="@id/textViewAddressLabel"
+                /> <!-- Align top for multi-line addresses -->
+
+            <!-- Date and Time on the same line -->
+            <TextView
+                android:id="@+id/textViewDateTimeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/date_amp_time"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textStyle="bold"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/textViewAddress" />
+
+            <TextView
+                android:id="@+id/textViewDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textColor="@color/text_color_white"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintBaseline_toBaselineOf="@id/textViewDateTimeLabel"
+                app:layout_constraintStart_toEndOf="@id/textViewDateTimeLabel"
+                app:layout_constraintTop_toTopOf="@id/textViewDateTimeLabel"
+                />
+
+            <TextView
+                android:id="@+id/textViewTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textColor="@color/text_color_white"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintBaseline_toBaselineOf="@id/textViewDateTimeLabel"
+                app:layout_constraintStart_toEndOf="@id/textViewDate"
+                app:layout_constraintTop_toTopOf="@id/textViewDateTimeLabel"
+                />
+
+            <!-- Description -->
+            <TextView
+                android:id="@+id/textViewDescriptionLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/description_case"
+                android:textColor="@color/text_color_white"
+                android:textAppearance="?attr/textAppearanceSubtitle2"
+                android:textStyle="bold"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/textViewDateTimeLabel" />
+
+            <TextView
+                android:id="@+id/textViewDescription"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:lineSpacingMultiplier="1.2"
+                android:textAppearance="?attr/textAppearanceBody1"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                android:textColor="@color/text_color_white"
+                app:layout_constraintTop_toBottomOf="@id/textViewDescriptionLabel"
+                />
+
+            <!-- Case Image -->
+            <ImageView
+                android:id="@+id/imageViewCaseImage"
+                android:layout_width="0dp"
+                android:layout_height="220dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp"
+                android:contentDescription="@string/case_image"
+                android:scaleType="fitXY"
+                android:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/textViewDescription"
+                tools:srcCompat="@tools:sample/backgrounds/scenic" /> <!-- Add some bottom margin -->
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </ScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

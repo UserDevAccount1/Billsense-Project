@@ -1,0 +1,67 @@
+# Secrets
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# BillSense Android project
+BillSense/.gradle/
+BillSense/.idea/
+BillSense/build/
+BillSense/app/build/
+BillSense/gmailbackgroundlibrary/build/
+BillSense/local.properties
+
+# Sensitive files
+**/google-services.json
+**/service_account.json
+**/*.keystore
+**/*.jks
+
+# Docker models (large files)
+docker/models/*.pt
+docker/models/*.tflite
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Claude Code local
+.claude/plans/
+.claude/projects/
+
+# Node modules
+node_modules/
+admin-panel/node_modules/
+admin-panel/dist/
+
+# Temp/lock files
+~$*
+*.tmp
+
+# Large binary files
+*.rar
+*.zip
+*.mp4

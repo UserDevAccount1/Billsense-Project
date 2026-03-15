@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BillSense Mobile Scanner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            padding: 15px;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            margin-bottom: 15px;
+        }
+
+        .api-status {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+
+        .tab-container {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .scan-section {
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #3498db;
+        }
+
+        .scan-section h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-connect {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-start {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-capture {
+            background: #9b59b6;
+            color: white;
+        }
+
+        .btn-complete {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-disconnect {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .angle-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .camera-container {
+            position: relative;
+            margin: 20px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 12px;
+            transform: scaleX(-1);
+        }
+
+        .capture-overlay {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .capture-btn {
+            background: rgba(52, 152, 219, 0.9);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            border: 3px solid white;
+        }
+
+        .camera-switch {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 18px;
+            z-index: 10;
+        }
+
+        /* Real-time Progress Styles */
+        .progress-container {
+            margin: 15px 0;
+        }
+
+        .progress-stage {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 8px 0;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .stage-active {
+            border-left-color: #27ae60;
+            background: #d4edda;
+        }
+
+        .stage-completed {
+            border-left-color: #95a5a6;
+            opacity: 0.8;
+        }
+
+        .quality-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+
+        .metric-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+
+        .features-detected {
+            background: #e8f4fd;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #3498db;
+        }
+
+        .feature-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .feature-tag {
+            background: #3498db;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+
+        .confidence-bar {
+            height: 20px;
+            background: #ecf0f1;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #27ae60);
+            transition: width 0.5s ease;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-scanning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .results {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .api-controls {
+            margin: 15px 0;
+        }
+
+        .file-input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 BillSense Scanner</h1>
+            <div class="subtitle">Real-Time Bill Detection with Live Metrics</div>
+            <div class="api-status">
+                <div id="apiStatus">Checking API Status...</div>
+                <div style="font-size: 0.8em; opacity: 0.8;">https://billsense-api-340624938055.asia-southeast2.run.app</div>
+            </div>
+        </header>
+
+        <div class="tab-container">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('realtime')">🔍 Live Scan</button>
+                <button class="tab" onclick="switchTab('api')">📁 Upload</button>
+                <button class="tab" onclick="switchTab('status')">❤️ Status</button>
+            </div>
+
+            <!-- Real-Time Scan Tab -->
+            <div id="realtime" class="tab-content active">
+                <!-- Standard Scan -->
+                <div class="scan-section">
+                    <h3>📷 Standard Scan</h3>
+                    <div class="btn-group">
+                        <button class="btn-connect" onclick="connectStandardScan()" id="stdConnect">Connect</button>
+                        <button class="btn-start" onclick="startStandardScan()" id="stdStart" disabled>Start Scan</button>
+                        <button class="btn-capture" onclick="captureStandardFrame()" id="stdCapture" disabled>Capture Frame</button>
+                        <button class="btn-complete" onclick="completeStandardScan()" id="stdComplete" disabled>Complete</button>
+                        <button class="btn-disconnect" onclick="disconnectStandardScan()" id="stdDisconnect" disabled>Disconnect</button>
+                    </div>
+
+                    <div class="camera-container">
+                        <video id="standardVideo" autoplay muted playsinline></video>
+                        <canvas id="standardCanvas"></canvas>
+                        <button class="camera-switch" onclick="switchCamera('standard')">🔄</button>
+                        <div class="capture-overlay">
+                            <button class="capture-btn" onclick="captureStandardFrame()" id="stdCaptureBtn" disabled>📸 Capture</button>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Progress for Standard Scan -->
+                    <div class="progress-container" id="standardProgress">
+                        <div class="progress-stage" id="stdStage1">
+                            <strong>1. Quality Check</strong>
+                            <div id="stdQualityMetrics" class="quality-metrics" style="display: none;">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="stdBrightness">--</div>
+                                    <div class="metric-label">Brightness</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="stdSharpness">--</div>
+                                    <div class="metric-label">Sharpness</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="stdContrast">--</div>
+                                    <div class="metric-label">Contrast</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="stdOverallQuality">--</div>
+                                    <div class="metric-label">Overall</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stage" id="stdStage2">
+                            <strong>2. Denomination Detection</strong>
+                            <div id="stdDenomination" style="margin-top: 8px; display: none;">
+                                <span class="metric-value">Detected: </span><span id="stdDenomValue">--</span>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stage" id="stdStage3">
+                            <strong>3. Feature Detection</strong>
+                            <div id="stdFeatures" class="features-detected" style="display: none;">
+                                <div>Features Found: <span id="stdFeatureCount">0</span>/<span id="stdTotalFeatures">6</span></div>
+                                <div class="feature-list" id="stdFeatureList"></div>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" id="stdConfidenceBar" style="width: 0%"></div>
+                                </div>
+                                <div>Coverage: <span id="stdCoverage">0%</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stage" id="stdStage4">
+                            <strong>4. Authenticity Analysis</strong>
+                            <div id="stdAuthenticity" style="margin-top: 8px; display: none;">
+                                <span class="metric-value">Status: </span><span id="stdAuthValue">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status" id="standardStatus">Disconnected</div>
+                    <div class="results" id="standardResults">No data yet...</div>
+                </div>
+
+                <!-- Multi-Scan -->
+                <div class="scan-section">
+                    <h3>🔄 Multi-Angle Scan</h3>
+                    <div class="btn-group">
+                        <button class="btn-connect" onclick="connectMultiScan()" id="multiConnect">Connect</button>
+                        <button class="btn-start" onclick="startMultiScan()" id="multiStart" disabled>Start Multi-Scan</button>
+                        <button class="btn-complete" onclick="completeMultiScan()" id="multiComplete" disabled>Complete</button>
+                        <button class="btn-disconnect" onclick="disconnectMultiScan()" id="multiDisconnect" disabled>Disconnect</button>
+                    </div>
+
+                    <div class="angle-buttons">
+                        <button class="btn-capture" onclick="captureAngle(1)" id="angle1" disabled>Angle 1</button>
+                        <button class="btn-capture" onclick="captureAngle(2)" id="angle2" disabled>Angle 2</button>
+                        <button class="btn-capture" onclick="captureAngle(3)" id="angle3" disabled>Angle 3</button>
+                    </div>
+
+                    <div class="camera-container">
+                        <video id="multiVideo" autoplay muted playsinline></video>
+                        <canvas id="multiCanvas"></canvas>
+                        <button class="camera-switch" onclick="switchCamera('multi')">🔄</button>
+                    </div>
+
+                    <!-- Real-time Progress for Multi-Scan -->
+                    <div class="progress-container" id="multiProgress">
+                        <div class="progress-stage">
+                            <strong>Angles Processed</strong>
+                            <div style="margin-top: 8px;">
+                                <span class="metric-value" id="multiAnglesCount">0/3</span> angles completed
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stage">
+                            <strong>Combined Features</strong>
+                            <div id="multiFeatures" class="features-detected" style="display: none;">
+                                <div>Total Features: <span id="multiFeatureCount">0</span>/<span id="multiTotalFeatures">6</span></div>
+                                <div class="feature-list" id="multiFeatureList"></div>
+                                <div class="confidence-bar">
+                                    <div class="confidence-fill" id="multiConfidenceBar" style="width: 0%"></div>
+                                </div>
+                                <div>Overall Coverage: <span id="multiCoverage">0%</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status" id="multiStatus">Disconnected</div>
+                    <div class="results" id="multiResults">No data yet...</div>
+                </div>
+
+                <!-- Video Scan -->
+                <div class="scan-section">
+                    <h3>🎥 Video Scan</h3>
+                    <div class="btn-group">
+                        <button class="btn-connect" onclick="connectVideoScan()" id="videoConnect">Connect</button>
+                        <button class="btn-start" onclick="startVideoRecording()" id="videoStart" disabled>Start Recording</button>
+                        <button class="btn-complete" onclick="stopVideoRecording()" id="videoStop" disabled>Stop Recording</button>
+                        <button class="btn-disconnect" onclick="disconnectVideoScan()" id="videoDisconnect" disabled>Disconnect</button>
+                    </div>
+
+                    <div class="camera-container">
+                        <video id="videoVideo" autoplay muted playsinline></video>
+                        <canvas id="videoCanvas"></canvas>
+                        <button class="camera-switch" onclick="switchCamera('video')">🔄</button>
+                    </div>
+
+                    <!-- Real-time Progress for Video Scan -->
+                    <div class="progress-container" id="videoProgress">
+                        <div class="progress-stage">
+                            <strong>Frame Analysis</strong>
+                            <div style="margin-top: 8px;">
+                                <span class="metric-value" id="videoFramesCount">0</span> frames processed
+                            </div>
+                        </div>
+                        
+                        <div class="progress-stage">
+                            <strong>Best Result</strong>
+                            <div id="videoBestResult" style="margin-top: 8px; display: none;">
+                                <div>Confidence: <span id="videoBestConfidence">0%</span></div>
+                                <div>Features: <span id="videoBestFeatures">0</span> detected</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status" id="videoStatus">Disconnected</div>
+                    <div class="results" id="videoResults">No data yet...</div>
+                </div>
+            </div>
+
+            <!-- API Upload Tab -->
+            <div id="api" class="tab-content">
+                <div class="scan-section">
+                    <h3>📷 Standard Scan API</h3>
+                    <input type="file" class="file-input" id="standardFile" accept="image/*" capture="environment">
+                    <button class="btn-start" onclick="testStandardScan()">Test Standard Scan</button>
+                    <div class="results" id="standardApiResults">No data yet...</div>
+                </div>
+
+                <div class="scan-section">
+                    <h3>🔄 Multi-Scan API</h3>
+                    <input type="file" class="file-input" id="multiFiles" accept="image/*" multiple capture="environment">
+                    <button class="btn-start" onclick="testMultiScan()">Test Multi-Scan</button>
+                    <div class="results" id="multiApiResults">No data yet...</div>
+                </div>
+
+                <div class="scan-section">
+                    <h3>🎥 Video Scan API</h3>
+                    <input type="file" class="file-input" id="videoFile" accept="video/*" capture="environment">
+                    <button class="btn-start" onclick="testVideoScan()">Test Video Scan</button>
+                    <div class="results" id="videoApiResults">No data yet...</div>
+                </div>
+            </div>
+
+            <!-- Status Tab -->
+            <div id="status" class="tab-content">
+                <div class="scan-section">
+                    <h3>❤️ API Health</h3>
+                    <button class="btn-start" onclick="testHealthCheck()">Check Health</button>
+                    <div class="results" id="healthResults">No data yet...</div>
+                </div>
+
+                <div class="scan-section">
+                    <h3>⚡ Real-Time Status</h3>
+                    <button class="btn-start" onclick="testRealtimeStatus()">Check Status</button>
+                    <div class="results" id="realtimeStatusResults">No data yet...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'https://billsense-api-340624938055.asia-southeast2.run.app';
+        
+        // WebSocket connections
+        let standardSocket = null;
+        let multiSocket = null;
+        let videoSocket = null;
+        
+        // Camera management
+        let currentStream = null;
+        let currentFacingMode = 'environment';
+        let frameInterval = null;
+
+        // Progress tracking
+        let standardProgress = {
+            currentStage: 0,
+            qualityMetrics: null,
+            denomination: null,
+            features: [],
+            coverage: 0,
+            confidence: 0
+        };
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Camera switching
+        async function switchCamera(type) {
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            await initializeCamera(type + 'Video');
+        }
+
+        // Initialize camera with back camera preference
+        async function initializeCamera(videoElementId) {
+            try {
+                const video = document.getElementById(videoElementId);
+                
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                console.log(`✅ Camera activated: ${currentFacingMode}`);
+                return true;
+                
+            } catch (error) {
+                console.error('❌ Camera error:', error);
+                alert('Could not access camera. Please check permissions and try again.');
+                return false;
+            }
+        }
+
+        // Capture frame from video
+        function captureFrame(videoElementId, canvasElementId) {
+            const video = document.getElementById(videoElementId);
+            const canvas = document.getElementById(canvasElementId);
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            return canvas.toDataURL('image/jpeg', 0.8);
+        }
+
+        // Update status display
+        function updateStatus(elementId, text, className) {
+            const element = document.getElementById(elementId);
+            element.textContent = text;
+            element.className = 'status ' + className;
+        }
+
+        // Enable/disable buttons
+        function enableButton(buttonId) {
+            const button = document.getElementById(buttonId);
+            if (button) button.disabled = false;
+        }
+
+        function disableButton(buttonId) {
+            const button = document.getElementById(buttonId);
+            if (button) button.disabled = true;
+        }
+
+        // Enable/disable angle buttons
+        function enableAngleButtons(startFrom = 1) {
+            for (let i = startFrom; i <= 3; i++) {
+                enableButton('angle' + i);
+            }
+        }
+
+        function disableAllAngleButtons() {
+            for (let i = 1; i <= 3; i++) {
+                disableButton('angle' + i);
+            }
+        }
+
+        // Update progress stages
+        function updateProgressStage(stageElementId, isActive = false, isCompleted = false) {
+            const stage = document.getElementById(stageElementId);
+            stage.className = 'progress-stage';
+            if (isActive) stage.classList.add('stage-active');
+            if (isCompleted) stage.classList.add('stage-completed');
+        }
+
+        // Update quality metrics display
+        function updateQualityMetrics(metrics) {
+            if (metrics && metrics.quality_metrics) {
+                document.getElementById('stdQualityMetrics').style.display = 'grid';
+                document.getElementById('stdBrightness').textContent = metrics.quality_metrics.brightness_score + '%';
+                document.getElementById('stdSharpness').textContent = metrics.quality_metrics.sharpness_score + '%';
+                document.getElementById('stdContrast').textContent = metrics.quality_metrics.contrast_score + '%';
+                document.getElementById('stdOverallQuality').textContent = metrics.quality_metrics.overall_quality + '%';
+            }
+        }
+
+        // Update features display
+        function updateFeaturesDisplay(features, count, total, coverage, confidence) {
+            const featureList = document.getElementById('stdFeatureList');
+            featureList.innerHTML = '';
+            
+            features.forEach(feature => {
+                const tag = document.createElement('span');
+                tag.className = 'feature-tag';
+                tag.textContent = feature;
+                featureList.appendChild(tag);
+            });
+            
+            document.getElementById('stdFeatureCount').textContent = count;
+            document.getElementById('stdTotalFeatures').textContent = total;
+            document.getElementById('stdCoverage').textContent = coverage + '%';
+            document.getElementById('stdConfidenceBar').style.width = confidence + '%';
+            document.getElementById('stdFeatures').style.display = 'block';
+        }
+
+        // ============================
+        // STANDARD SCAN FUNCTIONS
+        // ============================
+        function connectStandardScan() {
+            if (standardSocket) return;
+            
+            standardSocket = new WebSocket(API_BASE_URL.replace('https', 'wss') + '/ws/standard-scan');
+            
+            standardSocket.onopen = function() {
+                updateStatus('standardStatus', '🟢 Connected - Ready to Start Scan', 'status-connected');
+                enableButton('stdStart');
+                enableButton('stdDisconnect');
+                enableButton('stdCapture');
+                enableButton('stdCaptureBtn');
+                disableButton('stdConnect');
+                initializeCamera('standardVideo');
+                
+                // Reset progress
+                resetStandardProgress();
+            };
+            
+            standardSocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                document.getElementById('standardResults').textContent = JSON.stringify(data, null, 2);
+                
+                // Handle real-time progress updates
+                if (data.current_stage) {
+                    updateStandardProgress(data);
+                }
+                
+                if (data.status === 'scan_started') {
+                    updateStatus('standardStatus', '🟡 Scanning - Capture Frames Now', 'status-scanning');
+                } else if (data.status === 'complete') {
+                    updateStatus('standardStatus', '🟢 Scan Completed', 'status-connected');
+                    disableButton('stdComplete');
+                    enableButton('stdStart');
+                }
+            };
+            
+            standardSocket.onclose = function() {
+                updateStatus('standardStatus', '🔴 Disconnected', 'status-disconnected');
+                disableButton('stdStart');
+                disableButton('stdComplete');
+                disableButton('stdDisconnect');
+                disableButton('stdCapture');
+                disableButton('stdCaptureBtn');
+                enableButton('stdConnect');
+                standardSocket = null;
+            };
+            
+            standardSocket.onerror = function(error) {
+                updateStatus('standardStatus', '🔴 Connection Error', 'status-disconnected');
+                console.error('Standard scan error:', error);
+            };
+        }
+
+        function updateStandardProgress(data) {
+            // Update stages based on current progress
+            switch(data.current_stage) {
+                case 'quality_check':
+                    updateProgressStage('stdStage1', true);
+                    updateQualityMetrics(data);
+                    break;
+                case 'alignment':
+                    updateProgressStage('stdStage1', false, true);
+                    updateProgressStage('stdStage2', true);
+                    break;
+                case 'denomination':
+                    updateProgressStage('stdStage2', false, true);
+                    updateProgressStage('stdStage3', true);
+                    document.getElementById('stdDenomination').style.display = 'block';
+                    document.getElementById('stdDenomValue').textContent = data.denomination || 'Detecting...';
+                    break;
+                case 'feature_detection':
+                    updateProgressStage('stdStage3', true);
+                    if (data.features_detected) {
+                        updateFeaturesDisplay(
+                            data.features_detected,
+                            data.feature_count || 0,
+                            data.total_expected_features || 6,
+                            data.coverage_percentage || 0,
+                            data.confidence || 0
+                        );
+                    }
+                    break;
+                case 'final_analysis':
+                    updateProgressStage('stdStage3', false, true);
+                    updateProgressStage('stdStage4', true);
+                    document.getElementById('stdAuthenticity').style.display = 'block';
+                    document.getElementById('stdAuthValue').textContent = data.authenticity || 'Analyzing...';
+                    break;
+            }
+        }
+
+        function resetStandardProgress() {
+            // Reset all progress indicators
+            ['stdStage1', 'stdStage2', 'stdStage3', 'stdStage4'].forEach(stage => {
+                updateProgressStage(stage, false, false);
+            });
+            document.getElementById('stdQualityMetrics').style.display = 'none';
+            document.getElementById('stdDenomination').style.display = 'none';
+            document.getElementById('stdFeatures').style.display = 'none';
+            document.getElementById('stdAuthenticity').style.display = 'none';
+        }
+
+        function startStandardScan() {
+            if (standardSocket && standardSocket.readyState === WebSocket.OPEN) {
+                standardSocket.send('START_SCAN');
+                enableButton('stdComplete');
+                disableButton('stdStart');
+                updateStatus('standardStatus', '🟡 Scan Started - Capture Frames', 'status-scanning');
+            }
+        }
+
+        function captureStandardFrame() {
+            if (standardSocket && standardSocket.readyState === WebSocket.OPEN) {
+                const frameData = captureFrame('standardVideo', 'standardCanvas');
+                standardSocket.send(frameData);
+                console.log('📸 Frame sent to standard scan');
+            }
+        }
+
+        function completeStandardScan() {
+            if (standardSocket && standardSocket.readyState === WebSocket.OPEN) {
+                standardSocket.send('COMPLETE_SCAN');
+                disableButton('stdComplete');
+                updateStatus('standardStatus', '🟡 Completing scan...', 'status-scanning');
+            }
+        }
+
+        function disconnectStandardScan() {
+            if (standardSocket) {
+                standardSocket.close();
+            }
+        }
+
+        // ============================
+        // MULTI-SCAN FUNCTIONS
+        // ============================
+        function connectMultiScan() {
+            if (multiSocket) return;
+            
+            multiSocket = new WebSocket(API_BASE_URL.replace('https', 'wss') + '/ws/real-multi-scan');
+            
+            multiSocket.onopen = function() {
+                updateStatus('multiStatus', '🟢 Connected - Ready for Multi-Scan', 'status-connected');
+                enableButton('multiStart');
+                enableButton('multiDisconnect');
+                disableButton('multiConnect');
+                initializeCamera('multiVideo');
+                multiSocket.send('READY_FOR_ANGLE_1');
+            };
+            
+            multiSocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                document.getElementById('multiResults').textContent = JSON.stringify(data, null, 2);
+                
+                // Update multi-scan progress
+                if (data.angle_number) {
+                    document.getElementById('multiAnglesCount').textContent = data.angle_number + '/3';
+                }
+                
+                if (data.all_features) {
+                    updateMultiFeatures(data.all_features, data.total_features_so_far || 0);
+                }
+                
+                if (data.status === 'scan_started') {
+                    updateStatus('multiStatus', '🟡 Multi-Scan Started - Capture Angle 1', 'status-scanning');
+                    enableAngleButtons(1);
+                } else if (data.status === 'angle_captured') {
+                    const nextAngle = data.angle_number + 1;
+                    if (nextAngle <= 3) {
+                        updateStatus('multiStatus', `🟡 Angle ${data.angle_number} Done - Capture Angle ${nextAngle}`, 'status-scanning');
+                        enableAngleButtons(nextAngle);
+                    }
+                }
+            };
+            
+            multiSocket.onclose = function() {
+                updateStatus('multiStatus', '🔴 Disconnected', 'status-disconnected');
+                disableButton('multiStart');
+                disableButton('multiComplete');
+                disableButton('multiDisconnect');
+                enableButton('multiConnect');
+                disableAllAngleButtons();
+                multiSocket = null;
+            };
+        }
+
+        function updateMultiFeatures(features, count) {
+            const featureList = document.getElementById('multiFeatureList');
+            featureList.innerHTML = '';
+            
+            features.forEach(feature => {
+                const tag = document.createElement('span');
+                tag.className = 'feature-tag';
+                tag.textContent = feature;
+                featureList.appendChild(tag);
+            });
+            
+            document.getElementById('multiFeatureCount').textContent = count;
+            document.getElementById('multiTotalFeatures').textContent = '6';
+            document.getElementById('multiFeatures').style.display = 'block';
+        }
+
+        function startMultiScan() {
+            if (multiSocket && multiSocket.readyState === WebSocket.OPEN) {
+                multiSocket.send('START_MULTI_SCAN');
+                enableButton('multiComplete');
+                disableButton('multiStart');
+            }
+        }
+
+        function captureAngle(angleNumber) {
+            if (multiSocket && multiSocket.readyState === WebSocket.OPEN) {
+                const frameData = captureFrame('multiVideo', 'multiCanvas');
+                multiSocket.send(`ANGLE_${angleNumber}:${frameData}`);
+                disableButton('angle' + angleNumber);
+                console.log(`📸 Angle ${angleNumber} sent`);
+            }
+        }
+
+        function completeMultiScan() {
+            if (multiSocket && multiSocket.readyState === WebSocket.OPEN) {
+                multiSocket.send('COMPLETE_MULTI_SCAN');
+                disableButton('multiComplete');
+                disableAllAngleButtons();
+            }
+        }
+
+        function disconnectMultiScan() {
+            if (multiSocket) {
+                multiSocket.close();
+            }
+        }
+
+        // ============================
+        // VIDEO SCAN FUNCTIONS
+        // ============================
+        function connectVideoScan() {
+            if (videoSocket) return;
+            
+            videoSocket = new WebSocket(API_BASE_URL.replace('https', 'wss') + '/ws/real-video-scan');
+            
+            videoSocket.onopen = function() {
+                updateStatus('videoStatus', '🟢 Connected - Ready for Video Scan', 'status-connected');
+                enableButton('videoStart');
+                enableButton('videoDisconnect');
+                disableButton('videoConnect');
+                initializeCamera('videoVideo');
+                videoSocket.send('READY_FOR_PREVIEW');
+            };
+            
+            videoSocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                document.getElementById('videoResults').textContent = JSON.stringify(data, null, 2);
+                
+                // Update video scan progress
+                if (data.frames_processed) {
+                    document.getElementById('videoFramesCount').textContent = data.frames_processed;
+                }
+                
+                if (data.current_confidence) {
+                    document.getElementById('videoBestConfidence').textContent = data.current_confidence + '%';
+                    document.getElementById('videoBestResult').style.display = 'block';
+                }
+                
+                if (data.feature_count) {
+                    document.getElementById('videoBestFeatures').textContent = data.feature_count;
+                }
+                
+                if (data.status === 'recording_started') {
+                    updateStatus('videoStatus', '🟡 Recording - Analyzing Frames', 'status-scanning');
+                } else if (data.status === 'analysis_complete') {
+                    updateStatus('videoStatus', '🟢 Analysis Complete', 'status-connected');
+                    stopFrameCapture();
+                    disableButton('videoStop');
+                    enableButton('videoStart');
+                }
+            };
+            
+            videoSocket.onclose = function() {
+                                updateStatus('videoStatus', '🔴 Disconnected', 'status-disconnected');
+                disableButton('videoStart');
+                disableButton('videoStop');
+                disableButton('videoDisconnect');
+                enableButton('videoConnect');
+                stopFrameCapture();
+                videoSocket = null;
+            };
+        }
+
+        function startVideoRecording() {
+            if (videoSocket && videoSocket.readyState === WebSocket.OPEN) {
+                videoSocket.send('START_RECORDING');
+                enableButton('videoStop');
+                disableButton('videoStart');
+                updateStatus('videoStatus', '🟡 Recording - Move Camera Around Bill', 'status-scanning');
+                startFrameCapture();
+            }
+        }
+
+        function stopVideoRecording() {
+            if (videoSocket && videoSocket.readyState === WebSocket.OPEN) {
+                videoSocket.send('STOP_RECORDING');
+                disableButton('videoStop');
+                enableButton('videoStart');
+                stopFrameCapture();
+                updateStatus('videoStatus', '🟡 Stopping recording...', 'status-scanning');
+            }
+        }
+
+        function disconnectVideoScan() {
+            if (videoSocket) {
+                videoSocket.close();
+            }
+        }
+
+        // Frame capture for video scan
+        function startFrameCapture() {
+            frameInterval = setInterval(() => {
+                if (videoSocket && videoSocket.readyState === WebSocket.OPEN) {
+                    const frameData = captureFrame('videoVideo', 'videoCanvas');
+                    videoSocket.send(frameData);
+                }
+            }, 500); // Send frame every 500ms
+        }
+
+        function stopFrameCapture() {
+            if (frameInterval) {
+                clearInterval(frameInterval);
+                frameInterval = null;
+            }
+        }
+
+        // ============================
+        // API TESTING FUNCTIONS
+        // ============================
+        async function testStandardScan() {
+            const fileInput = document.getElementById('standardFile');
+            if (!fileInput.files[0]) {
+                alert('Please select an image file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                document.getElementById('standardApiResults').textContent = '🔄 Testing Standard Scan...';
+                const response = await fetch(API_BASE_URL + '/api/standard-scan', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                document.getElementById('standardApiResults').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('standardApiResults').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        async function testMultiScan() {
+            const fileInput = document.getElementById('multiFiles');
+            if (!fileInput.files.length) {
+                alert('Please select at least one image file');
+                return;
+            }
+            
+            const formData = new FormData();
+            for (let file of fileInput.files) {
+                formData.append('files', file);
+            }
+            
+            try {
+                document.getElementById('multiApiResults').textContent = '🔄 Testing Multi-Scan...';
+                const response = await fetch(API_BASE_URL + '/api/multi-scan', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                document.getElementById('multiApiResults').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('multiApiResults').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        async function testVideoScan() {
+            const fileInput = document.getElementById('videoFile');
+            if (!fileInput.files[0]) {
+                alert('Please select a video file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            try {
+                document.getElementById('videoApiResults').textContent = '🔄 Testing Video Scan...';
+                const response = await fetch(API_BASE_URL + '/api/video-scan', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                document.getElementById('videoApiResults').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('videoApiResults').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        async function testHealthCheck() {
+            try {
+                document.getElementById('healthResults').textContent = '🔄 Checking API Health...';
+                const response = await fetch(API_BASE_URL + '/api/health');
+                const data = await response.json();
+                document.getElementById('healthResults').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('apiStatus').textContent = data.status === 'healthy' ? '🟢 API is Healthy' : '🔴 API Issues';
+            } catch (error) {
+                document.getElementById('healthResults').textContent = '❌ Error: ' + error.message;
+                document.getElementById('apiStatus').textContent = '🔴 API Unreachable';
+            }
+        }
+
+        async function testRealtimeStatus() {
+            try {
+                document.getElementById('realtimeStatusResults').textContent = '🔄 Checking Real-Time Status...';
+                const response = await fetch(API_BASE_URL + '/api/real-time-status');
+                const data = await response.json();
+                document.getElementById('realtimeStatusResults').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('realtimeStatusResults').textContent = '❌ Error: ' + error.message;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            testHealthCheck();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            if (standardSocket) standardSocket.close();
+            if (multiSocket) multiSocket.close();
+            if (videoSocket) videoSocket.close();
+            if (frameInterval) clearInterval(frameInterval);
+        });
+    </script>
+</body>
+</html>
+                
+                

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent"
+    android:clickable="true"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:focusable="true"> <!-- Root FrameLayout is transparent -->
+
+    <!-- This RelativeLayout is your actual content, centered within the FrameLayout -->
+    <RelativeLayout
+        android:id="@+id/content_container"
+        android:layout_width="300dp"
+        android:layout_height="250dp"
+        android:layout_gravity="center"
+        android:background="@android:color/transparent"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- Your existing ImageViews go here, positioned relative to this RelativeLayout -->
+        <ImageView
+            android:id="@+id/video_detection_iv"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginBottom="55dp"
+            android:background="@drawable/circle_bg"
+            android:padding="10dp"
+            android:src="@drawable/video_detection" />
+
+        <ImageView
+            android:id="@+id/scan_bill_iv"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:background="@drawable/circle_bg"
+            android:padding="10dp"
+            android:src="@drawable/scan_bill" />
+
+        <ImageView
+            android:id="@+id/close_iv"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="30dp"
+            android:background="@drawable/circle_bg"
+            android:padding="5dp"
+            android:src="@drawable/close" />
+
+        <ImageView
+            android:id="@+id/multiple_detection_iv"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginBottom="55dp"
+            android:background="@drawable/circle_bg"
+            android:padding="6dp"
+            android:src="@drawable/multiple_detection"
+            app:tint="@color/white" />
+
+    </RelativeLayout>
+</FrameLayout>

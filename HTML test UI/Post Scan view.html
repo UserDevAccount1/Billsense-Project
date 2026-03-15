@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post-Scan View</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="post-scan-view">
+    <!-- Confidence Score Display -->
+    <div class="confidence-score">
+      <h2>Confidence Score</h2>
+      <p id="confidence-score">92% - Bill appears authentic</p>
+      <span id="bill-status" class="real">Real</span> <!-- Real or Fake will be shown here -->
+    </div>
+
+    <!-- Results Summary -->
+    <div class="results-summary">
+      <h3>Results Summary</h3>
+      <ul>
+        <li><span id="watermark-status">Watermark:</span><span class="status check"></span></li>
+        <li><span id="hologram-status">Hologram:</span><span class="status x"></span></li>
+        <li><span id="serial-status">Serial Number:</span><span class="status check"></span></li>
+        <li><span id="security-thread-status">Security Thread:</span><span class="status check"></span></li>
+        <li><span id="microtext-status">Microtext:</span><span class="status x"></span></li>
+        <li><span id="edge-status">Edge Detection:</span><span class="status check"></span></li>
+      </ul>
+    </div>
+
+    <!-- Recommendation Message -->
+    <div class="recommendation">
+      <h2>Recommendation</h2>
+      <p id="recommendation-message">This bill appears to be authentic.</p>
+    </div>
+
+    <!-- Comparison Viewer -->
+    <div class="comparison-viewer">
+      <h2>Comparison Viewer</h2>
+      <div class="scanned-bill">
+        <img src="scanned-bill.jpg" alt="Scanned Bill" class="bill-image">
+        <p>Click areas to zoom in</p>
+      </div>
+      <div class="reference-bill">
+        <img src="reference-bill.jpg" alt="Reference Bill" class="bill-image">
+      </div>
+    </div>
+
+    <!-- Interactive Feedback -->
+    <div class="interactive-feedback">
+      <h2>Interactive Feedback</h2>
+      <div class="clickable-area" data-info="Watermark" style="background-color: rgba(0, 0, 0, 0.1); width: 100px; height: 100px;">
+        <p>Watermark Area</p>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+      <button id="retake-btn">Retake Scan</button>
+      <button id="save-btn">Save Result</button>
+      <button id="share-btn">Share Result</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
+
+
+<style>
+    /* General styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f4;
+}
+
+/* Post-scan view container */
+.post-scan-view {
+  width: 80%;
+  margin: 50px auto;
+  padding: 20px;
+  background-color: white;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+/* Confidence score styling */
+.confidence-score {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+#confidence-score {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+#bill-status {
+  font-weight: bold;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 1.2rem;
+}
+
+#bill-status.real {
+  background-color: #4CAF50; /* Green for real */
+  color: white;
+}
+
+#bill-status.fake {
+  background-color: #F44336; /* Red for fake */
+  color: white;
+}
+
+/* Results summary */
+.results-summary h3 {
+  margin-bottom: 10px;
+}
+
+.results-summary ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.results-summary li {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.status {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status.check {
+  background-color: #4CAF50; /* Green for valid feature */
+}
+
+.status.x {
+  background-color: #F44336; /* Red for invalid feature */
+}
+
+/* Recommendation */
+.recommendation h2 {
+  margin-top: 20px;
+  font-size: 1.5rem;
+}
+
+.recommendation p {
+  font-size: 1.2rem;
+}
+
+/* Comparison viewer */
+.comparison-viewer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.bill-image {
+  width: 200px;
+  height: auto;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+/* Interactive feedback */
+.interactive-feedback {
+  margin-top: 20px;
+}
+
+.clickable-area {
+  border: 1px solid #ddd;
+  cursor: pointer;
+  text-align: center;
+  padding: 20px;
+}
+
+.action-buttons {
+  text-align: center;
+  margin-top: 20px;
+}
+
+button {
+  padding: 10px 20px;
+  margin: 10px;
+  border: none;
+  background-color: #007BFF;
+  color: white;
+  font-size: 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+</style>
+
+
+<script>
+    document.getElementById("retake-btn").addEventListener("click", function() {
+  alert("Please retake the scan.");
+});
+
+document.getElementById("save-btn").addEventListener("click", function() {
+  alert("Result saved successfully!");
+});
+
+document.getElementById("share-btn").addEventListener("click", function() {
+  alert("Share the result with others for verification.");
+});
+
+// Interactive feedback - Click areas to show info
+document.querySelectorAll(".clickable-area").forEach(area => {
+  area.addEventListener("click", function() {
+    const info = this.getAttribute("data-info");
+    alert(`More details about: ${info}`);
+  });
+});
+
+// Example to simulate feature checks and confidence score
+function updateScanResults() {
+  // Simulate scanned bill results (this would come from your analysis)
+  document.getElementById("watermark-status").textContent = "Watermark:";
+  document.querySelector("#watermark-status + .status").classList.add("check");
+  document.getElementById("hologram-status").textContent = "Hologram:";
+  document.querySelector("#hologram-status + .status").classList.add("x");
+  
+  const confidenceScore = 92; // Simulated confidence score
+  const recommendation = confidenceScore >= 75 ? "This bill appears to be authentic." : "Warning: Possible counterfeit detected. Check the watermark.";
+  
+  document.getElementById("confidence-score").textContent = `${confidenceScore}% - Bill appears ${confidenceScore >= 75 ? 'real' : 'fake'}`;
+  document.getElementById("recommendation-message").textContent = recommendation;
+
+  // Change the "Real" or "Fake" label based on confidence score
+  const billStatus = document.getElementById("bill-status");
+  if (confidenceScore >= 75) {
+    billStatus.textContent = "Real";  // Display "Real" if confidence score is high
+    billStatus.classList.remove("fake");
+    billStatus.classList.add("real");
+  } else {
+    billStatus.textContent = "Fake";  // Display "Fake" if confidence score is low
+    billStatus.classList.remove("real");
+    billStatus.classList.add("fake");
+  }
+}
+
+updateScanResults(); // Update results on page load
+
+</script>
+
+
+
+
+<style>
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 200px;
+      height: 100%;
+      background-color: #333;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+      transition: transform 0.3s ease; /* Smooth transition for sliding */
+      transform: translateX(0); /* Sidebar visible by default */
+    }
+
+    .sidebar-btn {
+      display: block;
+      padding: 10px 15px;
+      margin-bottom: 15px;
+      color: white;
+      text-decoration: none;
+      background-color: #007bff;
+      border-radius: 5px;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .sidebar-btn:hover {
+      background-color: #0056b3;
+    }
+
+    /* Hidden sidebar (slide out to the left) */
+    .sidebar.hidden {
+      transform: translateX(-100%); /* Slide sidebar out of view */
+    }
+
+    /* Toggle Button Styles */
+    .toggle-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 10px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .toggle-btn:hover {
+      background-color: #0056b3;
+    }
+  </style>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+    <a href="./during scanning info.html" class="sidebar-btn">Previous Page</a>
+  
+  </div>
+
+  <!-- Toggle Button -->
+  <button class="toggle-btn" id="toggle-btn">Toggle Sidebar</button>
+
+  <!-- JavaScript -->
+  <script>
+    // Get elements
+    const sidebar = document.getElementById("sidebar");
+    const toggleBtn = document.getElementById("toggle-btn");
+
+    // Toggle sidebar visibility on button click
+    toggleBtn.addEventListener("click", function() {
+      sidebar.classList.toggle("hidden");
+    });
+  </script>

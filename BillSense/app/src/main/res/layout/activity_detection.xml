@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    android:fitsSystemWindows="true"
+    tools:context=".activities.DetectionActivity">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:layout_alignParentTop="true"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp"
+        app:navigationIconTint="@color/white"
+        app:title="@string/step_by_step_enhanced_detection_process"
+        app:titleTextColor="@color/white" />
+
+    <!-- FrameLayout to hold the current page content -->
+    <FrameLayout
+        android:id="@+id/page_content_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_above="@id/navigation_buttons_container"
+        android:layout_below="@id/toolbar"
+        android:layout_marginVertical="10dp" />
+
+    <!-- Container for Navigation Buttons -->
+    <LinearLayout
+        android:id="@+id/navigation_buttons_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="20dp"
+        android:gravity="center_horizontal"
+        android:orientation="horizontal">
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/previous_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/rounded_bg"
+            android:fontFamily="@font/poppins"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
+            android:text="@string/previous"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/next_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/rounded_bg"
+            android:fontFamily="@font/poppins"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
+            android:text="@string/next"
+            android:textColor="@color/white"
+            android:textSize="14sp" />
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/submit_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/rounded_bg"
+            android:fontFamily="@font/poppins"
+            android:paddingStart="15dp"
+            android:paddingEnd="15dp"
+            android:text="@string/submit"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:visibility="gone" /> <!-- Initially hidden -->
+
+    </LinearLayout>
+
+</RelativeLayout>

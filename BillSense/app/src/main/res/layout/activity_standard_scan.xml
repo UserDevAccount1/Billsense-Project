@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mainScanLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/scan_bg_clr"
+    android:fitsSystemWindows="true"
+    tools:context=".scan.standard.StandardScanActivity">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mainContentLayout"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Camera Preview Container -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/cameraContainer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@android:color/black"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <!-- CameraX PreviewView for the live feed -->
+            <androidx.camera.view.PreviewView
+                android:id="@+id/cameraPreviewView"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:implementationMode="compatible"/>
+
+            <!-- ImageView for displaying the captured image -->
+            <ImageView
+                android:id="@+id/capturedImageView"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:contentDescription="@string/captured_image_preview"
+                android:scaleType="fitXY"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Scan Button - Centered at the bottom -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/scanButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:backgroundTint="#007bff"
+                android:text="@string/scan"
+                android:textColor="@android:color/white"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <!-- Retake Button - To the left of Scan Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/retakeButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="@string/retake"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="@+id/scanButton"
+                app:layout_constraintEnd_toStartOf="@+id/scanButton"
+                app:layout_constraintHorizontal_chainStyle="packed"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <!-- Hide/Show Info Button - Top right of cameraContainer -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/hideInfoButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="15dp"
+                android:backgroundTint="#ff4444"
+                android:text="@string/hide_info"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                app:iconGravity="textStart"
+                app:iconTint="@android:color/white"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Information Sidebar (Initially hidden or visible based on your default) -->
+            <!-- Wrapped in a ScrollView in case content overflows -->
+            <ScrollView
+                android:id="@+id/infoSidebarScrollView"
+                android:layout_width="190dp"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="10dp"
+                android:layout_marginBottom="8dp"
+                android:background="#B3000000"
+                android:padding="8dp"
+                android:elevation="4dp"
+                android:visibility="gone"
+                tools:visibility="visible"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/hideInfoButton">
+
+                <LinearLayout
+                    android:id="@+id/infoSidebarLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Fee the Bill Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/feelBillCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/feel_the_bill"
+                                android:textColor="@android:color/black"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/securityPaperText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/_1_security_paper"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                            <TextView
+                                android:id="@+id/embossedPrintText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/_2_embossed_prints"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                            <TextView
+                                android:id="@+id/tactileMarkText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/_3_tactile_marks"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal"
+                                >
+
+                                <TextView
+                                    android:id="@+id/seeRefText"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/see_reference_pic"
+                                    android:textColor="@android:color/black"
+                                    android:textSize="12sp" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/viewButton"
+                                    android:layout_width="60dp"
+                                    android:layout_marginStart="5dp"
+                                    android:layout_height="35dp"
+                                    android:padding="0dp"
+                                    android:gravity="center"
+                                    android:backgroundTint="#007bff"
+                                    android:text="@string/view"
+                                    android:textSize="11sp"
+                                    android:textColor="@android:color/white" />
+
+                            </LinearLayout>
+
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+
+                    <!-- Confidence Score Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/confidenceScoreCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/authenticity_confidence"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                            <TextView
+                                android:id="@+id/confidencePercentageText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/_0_"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                            <ProgressBar
+                                android:id="@+id/confidenceProgressBar"
+                                style="?android:attr/progressBarStyleHorizontal"
+                                android:layout_width="match_parent"
+                                android:layout_height="10dp"
+                                android:layout_marginTop="8dp"
+                                android:max="100"
+                                android:progress="0"
+                                android:progressDrawable="@drawable/custom_progress_bar_yellow" />
+                            <TextView
+                                android:id="@+id/confidenceBillStatusText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text=""
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <!-- Bill Info Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/billInfoCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/bill_info"
+                                android:textColor="@android:color/black"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/currencyInfoText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/currency"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                            <TextView
+                                android:id="@+id/denominationInfoText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/denomination"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                            <TextView
+                                android:id="@+id/serialNoText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/serial_number"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <!-- Feature Detection Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/featureDetectionCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:text="@string/feature_detection"
+                                android:textColor="@android:color/black"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+
+                            <!-- This is the new container for the feature list -->
+                            <LinearLayout
+                                android:id="@+id/features_list_layout"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="vertical"
+                                android:layout_marginTop="4dp"/>
+
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+
+                    <!-- Error Messages Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/errorMessagesCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        android:visibility="gone"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:id="@+id/errorText"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="marquee"
+                                android:lines="1"
+                                android:text="@string/error"
+                                android:textColor="@android:color/holo_red_dark" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <!-- Quality Metrics Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/qualityMetricsCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp"
+                        android:visibility="gone"
+                        tools:visibility="visible">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/image_quality"
+                                android:textColor="@android:color/black"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/quality_status_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp"
+                                tools:text="Status: GOOD" />
+
+                            <TextView
+                                android:id="@+id/sharpness_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp"
+                                tools:text="Sharpness: 156.2" />
+
+                            <TextView
+                                android:id="@+id/brightness_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="@android:color/black"
+                                android:textSize="11sp"
+                                tools:text="Brightness: 127.5" />
+
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+
+
+                    <!-- Feature Overlay Card -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/featureOverlayCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        app:cardBackgroundColor="#E6FFFFFF"
+                        android:layout_marginBottom="30dp"
+                        android:visibility="gone"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <com.google.android.material.chip.ChipGroup
+                                android:id="@+id/featureChipGroup"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                app:chipSpacingHorizontal="6dp"
+                                app:singleLine="false">
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/watermarkChip"
+                                    style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/watermark" />
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/hologramChip"
+                                    style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/hologram" />
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/serialNumberChip"
+                                    style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/serial" />
+                                <com.google.android.material.chip.Chip
+                                    android:id="@+id/uvFeaturesChip"
+                                    style="@style/Widget.Material3.Chip.Suggestion.Elevated"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/uv" />
+                            </com.google.android.material.chip.ChipGroup>
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                </LinearLayout>
+            </ScrollView>
+
+        </androidx.constraintlayout.widget.ConstraintLayout> <!-- End of cameraContainer -->
+
+    </androidx.constraintlayout.widget.ConstraintLayout> <!-- End of mainContentLayout -->
+
+</androidx.constraintlayout.widget.ConstraintLayout> <!-- End of mainScanLayout -->

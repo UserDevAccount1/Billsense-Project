@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mobile Landscape Pre-Scan (Video)</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 180px;
+      background-color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px;
+      transition: width 0.3s;
+    }
+
+    .sidebar.collapsed {
+      width: 60px;
+    }
+
+    .toggle-btn {
+      background-color: #28a745;
+      color: white;
+      border: none;
+      padding: 10px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    .sidebar-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      color: white;
+      text-decoration: none;
+      background-color: #007bff;
+      border-radius: 5px;
+      text-align: center;
+      font-size: 14px;
+      transition: 0.3s;
+    }
+
+    .sidebar.collapsed .sidebar-btn {
+      font-size: 0;
+      padding: 15px;
+    }
+
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      padding: 10px;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .camera-container {
+      width: 90vw;
+      height: 60vh;
+      background: #000;
+      border-radius: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .rectangle-frame {
+  position: absolute;
+  top: 10%;
+  left: 5%;
+  width: 90%;
+  height: 70%;
+  border: 3px dashed rgba(255, 255, 255, 0.8); /* ← changed solid to dashed */
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+
+    /* Top Controls */
+    .top-controls {
+      position: absolute;
+      top: 10px;
+      width: 100%;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      color: white;
+      font-size: 12px;
+      z-index: 2;
+    }
+
+    .top-controls div {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Instructions */
+    .instructions {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 10px 15px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 12px;
+      width: 240px;
+      z-index: 2;
+    }
+
+    .tips {
+      position: absolute;
+      top: 150px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 8px 12px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 11px;
+      width: 220px;
+      z-index: 2;
+      color: #555;
+    }
+
+    /* Scan Button */
+    .scan-btn {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 25px;
+      font-size: 16px;
+      color: white;
+      background-color: #28a745;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      z-index: 3;
+    }
+
+    .scan-btn:hover {
+      background-color: #218838;
+    }
+
+    /* Range input */
+    input[type=range] {
+      width: 80px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sidebar" id="sidebar">
+    <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+    <a href="./index.html" class="sidebar-btn">Previous Page</a>
+    <a href="./during scanning info.html" class="sidebar-btn">Next Page</a>
+  </div>
+
+  <div class="main-content">
+    <div class="camera-container">
+      <div class="rectangle-frame"></div>
+
+      <div class="top-controls">
+        <div>
+          <label for="focusSlider">Focus:</label>
+          <input type="range" id="focusSlider" min="1" max="100" value="50">
+        </div>
+        <div>
+          <label for="flashToggle">Flash:</label>
+          <input type="checkbox" id="flashToggle">
+          <span id="flashStatus">Off</span>
+        </div>
+      </div>
+
+      <div class="instructions">
+        <strong>Instruction:</strong><br>
+        Move your phone slowly over the bill while recording.
+      </div>
+
+      <div class="tips">
+        <strong>Tips:</strong><br>
+        Avoid shadows. Keep a steady light.
+      </div>
+
+      <button class="scan-btn" id="startVideoBtn">Start Video</button>
+    </div>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('collapsed');
+    }
+
+    const flashToggle = document.getElementById("flashToggle");
+    const flashStatus = document.getElementById("flashStatus");
+
+    flashToggle.addEventListener("change", () => {
+      flashStatus.textContent = flashToggle.checked ? "On" : "Off";
+    });
+
+    const startVideoBtn = document.getElementById("startVideoBtn");
+    startVideoBtn.addEventListener("click", () => {
+      alert("Recording started! Move slowly over the bill.");
+    });
+  </script>
+
+</body>
+</html>

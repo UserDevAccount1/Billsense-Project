@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:left="10dp"
+        android:gravity="center_vertical|left">
+        <shape android:shape="line">
+            <stroke
+                android:width="4dp"
+                android:color="@color/black"
+                android:dashWidth="8dp"
+                android:dashGap="8dp" />
+        </shape>
+    </item>
+    <item
+        android:drawable="@drawable/arrowhead"
+        android:gravity="center_vertical|left"
+        android:left="0dp" />
+</layer-list>

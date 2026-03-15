@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+
+    <item android:id="@+id/nav_home"
+        android:title="@string/home"
+        android:icon="@drawable/home"/>
+
+    <item android:id="@+id/nav_evidence"
+        android:title="@string/evidence"
+        android:icon="@drawable/evidence"/>
+
+    <item
+        android:id="@+id/blank"
+        android:title="@string/scan_bill"
+        android:enabled="false"/>
+
+    <item android:id="@+id/nav_dispatch"
+        android:title="@string/ai_bill"
+        android:icon="@drawable/billy"/>
+
+    <item android:id="@+id/nav_cases"
+        android:title="@string/cases"
+        android:icon="@drawable/cases"/>
+
+</menu>

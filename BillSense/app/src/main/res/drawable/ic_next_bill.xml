@@ -1,0 +1,10 @@
+<!-- res/drawable/ic_next_bill.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0">  <!-- Or a specific color like "@android:color/black" -->
+    <path
+        android:fillColor="@color/black"
+        android:pathData="M8.59,16.59L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.59Z M15,6H17V18H15V6Z"/> <!-- Example path data for a "next" style icon -->
+</vector>

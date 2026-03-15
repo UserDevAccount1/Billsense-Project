@@ -1,0 +1,101 @@
+<template>
+  <div id="main-wrapper">
+    <!-- Mobile menu button -->
+    <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
+      <span class="material-icons">{{ mobileMenuOpen ? 'close' : 'menu' }}</span>
+    </button>
+
+    <!-- Mobile overlay -->
+    <div class="sidebar-overlay" :class="{ active: mobileMenuOpen }" @click="mobileMenuOpen = false"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
+      <div class="sidebar-brand">
+        <img src="/billsense-logo.png" alt="BillSense" />
+        <h2>BillSense</h2>
+      </div>
+
+      <nav class="sidebar-nav">
+        <ul>
+          <li>
+            <router-link to="/" exact-active-class="active" @click="mobileMenuOpen = false">
+              <span class="material-icons">dashboard</span>
+              <span class="nav-text">Dashboard</span>
+            </router-link>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">qr_code_scanner</span>
+              <span class="nav-text">Scan Reports</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">people</span>
+              <span class="nav-text">Users</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">model_training</span>
+              <span class="nav-text">ML Models</span>
+            </a>
+          </li>
+          <li>
+            <router-link to="/connection-health" @click="mobileMenuOpen = false">
+              <span class="material-icons">settings_ethernet</span>
+              <span class="nav-text">Connection Health</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link to="/gitnexus" @click="mobileMenuOpen = false">
+              <span class="material-icons">account_tree</span>
+              <span class="nav-text">GitNexus</span>
+            </router-link>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">gavel</span>
+              <span class="nav-text">Cases</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">how_to_vote</span>
+              <span class="nav-text">Voting Posts</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" @click="mobileMenuOpen = false">
+              <span class="material-icons">settings</span>
+              <span class="nav-text">Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="sidebar-toggle">
+        <button @click="sidebarCollapsed = !sidebarCollapsed">
+          <span class="material-icons">{{ sidebarCollapsed ? 'chevron_right' : 'chevron_left' }}</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <router-view />
+    </main>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'App',
+  data() {
+    return {
+      sidebarCollapsed: false,
+      mobileMenuOpen: false
+    }
+  }
+}
+</script>
