@@ -1,5 +1,0 @@
-API Base URLs
-HTTP
-https://billsense-api-340624938055.asia-southeast2.run.app
-WebSocket
-wss://billsense-api-340624938055.asia-southeast2.run.app 

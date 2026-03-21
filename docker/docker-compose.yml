@@ -1,20 +1,54 @@
-version: "3.8"
+name: billsense
 
 services:
   billsense-api:
     image: asia-southeast2-docker.pkg.dev/bill-sense-aec6b/billsense/billsense-api:latest
+    container_name: billsense-api
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
+    volumes:
+      - model-cache:/app/models
+    labels:
+      com.billsense.project: "BillSense"
+      com.billsense.component: "API + ML Models"
+      com.billsense.description: "FastAPI inference server with 6 YOLOv8 OBB models (counterfeit, denomination, evp, ovd, ovi, security)"
     restart: unless-stopped
 
-  admin-panel:
+  billsense-admin:
     build:
       context: ../admin-panel
       dockerfile: Dockerfile
+    container_name: billsense-admin
     ports:
       - "3000:80"
     depends_on:
       - billsense-api
+      - gitnexus-agent
+    labels:
+      com.billsense.project: "BillSense"
+      com.billsense.component: "Admin Panel"
+      com.billsense.description: "Vue 3 admin dashboard with connection health, GitNexus, scan reports"
     restart: unless-stopped
+
+  gitnexus-agent:
+    build:
+      context: ./gitnexus-agent
+      dockerfile: Dockerfile
+    container_name: billsense-gitnexus-agent
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+    labels:
+      com.billsense.project: "BillSense"
+      com.billsense.component: "GitNexus Agent"
+      com.billsense.description: "Puppeteer AI agent that auto-fills and clones repos in GitNexus"
+    restart: unless-stopped
+
+volumes:
+  model-cache:
+    name: billsense-model-cache
+    labels:
+      com.billsense.project: "BillSense"

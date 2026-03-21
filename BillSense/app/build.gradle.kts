@@ -28,13 +28,34 @@ android {
         applicationId = "com.app.billsense"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 6
+        versionName = "1.4.1"
 
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${project.properties["FIREBASE_PROJECT_ID"]}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "app"
+
+    productFlavors {
+        create("user") {
+            dimension = "app"
+            applicationId = "com.app.billsense"
+            versionCode = 6
+            versionName = "1.4.1"
+            resValue("string", "app_label", "BillSense")
+            buildConfigField("String", "APP_VARIANT", "\"main\"")
+        }
+        create("admin") {
+            dimension = "app"
+            applicationId = "com.admin.billsense"
+            versionCode = 3
+            versionName = "1.1.1"
+            resValue("string", "app_label", "BillSense Admin")
+            buildConfigField("String", "APP_VARIANT", "\"admin\"")
+        }
     }
 
     buildTypes {
@@ -64,10 +85,6 @@ android {
         resources {
             pickFirsts += "META-INF/INDEX.LIST"
             pickFirsts += "META-INF/DEPENDENCIES"
-            // You might have other packaging rules here, e.g., for licenses:
-            // pickFirsts += "META-INF/LICENSE.txt"
-            // pickFirsts += "META-INF/NOTICE.txt"
-            // excludes += "/META-INF/{AL2.0,LGPL2.1}" // Example for excluding specific license files
         }
     }
 }

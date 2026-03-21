@@ -29,8 +29,10 @@ BillSense/local.properties
 **/*.jks
 
 # Docker models (large files)
-docker/models/*.pt
-docker/models/*.tflite
+docker/models/
+
+# Device registry
+.device-registry.json
 
 # Python
 __pycache__/
@@ -65,3 +67,9 @@ admin-panel/dist/
 *.rar
 *.zip
 *.mp4
+
+# Resources (docs, images, archives - not needed to run the system)
+Resources/
+
+# Claude Code local config
+.claude/
