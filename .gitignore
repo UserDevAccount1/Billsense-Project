@@ -58,6 +58,14 @@ Thumbs.db
 node_modules/
 admin-panel/node_modules/
 admin-panel/dist/
+**/dist/
+
+# Dev-server logs (host process)
+**/dev-server.log
+**/dev-server.err.log
+
+# PDF report output (regenerable)
+pdf-output/*.pdf
 
 # Temp/lock files
 ~$*

@@ -18,13 +18,12 @@ services:
 
   billsense-admin:
     build:
-      context: ../admin-panel
+      context: "../BillSense Admin/admin-panel"
       dockerfile: Dockerfile
     container_name: billsense-admin
     ports:
       - "3000:80"
     depends_on:
-      - billsense-api
       - gitnexus-agent
     labels:
       com.billsense.project: "BillSense"
