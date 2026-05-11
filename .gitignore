@@ -67,6 +67,9 @@ admin-panel/dist/
 # PDF report output (regenerable)
 pdf-output/*.pdf
 
+# Third-party MCP servers cloned on demand (see tools/cpanel-mcp/README.md)
+tools/ringo380-cpanel-mcp/
+
 # Temp/lock files
 ~$*
 *.tmp

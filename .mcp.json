@@ -12,15 +12,15 @@
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"]
     },
-    "billsense-cpanel": {
+    "cpanel": {
       "command": "node",
-      "args": ["./tools/cpanel-mcp/server.mjs"],
+      "args": ["./tools/ringo380-cpanel-mcp/dist/index.js"],
       "env": {
-        "CPANEL_HOST": "billsense.dev-environment.site",
+        "CPANEL_HOSTNAME": "billsense.dev-environment.site",
         "CPANEL_PORT": "2083",
-        "CPANEL_USER": "${CPANEL_USER}",
-        "CPANEL_TOKEN": "${CPANEL_TOKEN}",
-        "CPANEL_STRICT_SSL": "false"
+        "CPANEL_SSL": "true",
+        "CPANEL_USERNAME": "${CPANEL_USERNAME}",
+        "CPANEL_API_TOKEN": "${CPANEL_API_TOKEN}"
       }
     }
   }
