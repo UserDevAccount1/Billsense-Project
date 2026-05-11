@@ -45,7 +45,7 @@
       <input
         v-model="draft"
         :disabled="loading || !hasKey"
-        :placeholder="hasKey ? 'Ask Billy about peso bills, security features, or how to use BillSense...' : 'VITE_GEMINI_API_KEY not configured — set it in GitHub secrets'"
+        :placeholder="hasKey ? 'Ask Billy about peso bills, security features, or how to use BillSense...' : 'Gemini key not configured on the server — see footer'"
         @keydown.enter.exact.prevent="onSubmit"
         @keydown.enter.shift.exact.stop
         autofocus
@@ -58,9 +58,9 @@
     <footer class="footer-note">
       <span class="material-icons">info</span>
       <span>
-        Billy runs on Gemini with a Pro → Flash → Flash-Lite fallback chain ({{ activeModel }}). The API key is baked into this browser bundle,
-        so this works for the BillSense demo but is not appropriate for public production.
-        For real production, proxy requests through a server.
+        Billy runs on Gemini with a Pro → Flash → Flash-Lite fallback chain ({{ activeModel }}).
+        Requests go through the same-origin server proxy at /api/gemini/chat — the API key stays
+        on the server and never reaches the browser.
       </span>
     </footer>
   </div>
@@ -110,6 +110,7 @@ export default {
       activeModel: MODEL_CHAIN[0],
       resolvedVersion: '',
       degraded: false,
+      keyReady: false,    // resolved by checkKey() on mount
       suggestions: [
         'What security features should I check on a 1000-peso bill?',
         'How do I use the Scan Bill feature?',
@@ -119,7 +120,7 @@ export default {
     }
   },
   computed: {
-    hasKey() { return hasGeminiKey() },
+    hasKey() { return this.keyReady },
     canSend() { return this.draft.trim() && !this.loading && this.hasKey },
     statusClass() {
       if (!this.hasKey) return 'err'
@@ -135,6 +136,9 @@ export default {
       const tag = this.degraded ? ' · fallback' : ''
       return `Connected · ${this.activeModel}${v}${tag}`
     }
+  },
+  async created() {
+    this.keyReady = await hasGeminiKey()
   },
   methods: {
     renderMarkdown(text) {

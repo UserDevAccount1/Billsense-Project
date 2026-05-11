@@ -31,10 +31,15 @@ jobs:
         run: npm ci
 
       - name: Inject env
+        # NOTE: VITE_GEMINI_API_KEY was intentionally removed. Vite bakes any
+        # VITE_* variable into the public JS bundle, and Google's automated
+        # leaked-key scanner auto-revokes any Gemini key it finds in a public
+        # bundle within minutes. Gemini calls now go through the same-origin
+        # server-side proxy at /api/gemini/chat (see app.js on the cPanel
+        # host), which reads the key from a server-only file.
         run: |
           {
             echo "VITE_GITNEXUS_REPO=${{ vars.VITE_GITNEXUS_REPO }}"
-            echo "VITE_GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}"
             echo "VITE_OPENAI_API_KEY=${{ secrets.VITE_OPENAI_API_KEY }}"
             echo "VITE_GITHUB_PAT=${{ secrets.VITE_GITHUB_PAT }}"
           } > .env.production

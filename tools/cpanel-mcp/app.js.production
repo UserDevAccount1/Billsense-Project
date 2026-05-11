@@ -1,31 +1,53 @@
-// Phusion Passenger entry — static SPA server with HTML5-history fallback.
-// Serves files from ./public, falls back to index.html for unknown routes (Vue Router).
+// Phusion Passenger entry — static SPA server + server-side Gemini proxy.
+//
+// 1) Serves files from ./public, falls back to index.html for SPA routes.
+// 2) Holds the Gemini API key server-side (read from .gemini-key file at
+//    process start) and proxies POST /api/gemini/chat to Google's
+//    Generative Language API. The key never reaches the browser.
+//
 // Pure Node stdlib — no npm install needed on the cPanel host.
 
 const http = require('http');
+const https = require('https');
 const fs   = require('fs');
 const path = require('path');
 
-const ROOT = path.join(__dirname, 'public');
+const ROOT     = path.join(__dirname, 'public');
+const KEY_FILE = path.join(__dirname, '.gemini-key');
+
+// Read the Gemini key once at startup. If the file is missing, the proxy
+// returns 503 — the static dashboard still works, just no AI features.
+let GEMINI_KEY = '';
+try {
+  GEMINI_KEY = fs.readFileSync(KEY_FILE, 'utf8').trim();
+} catch (_) {
+  console.warn('[billy-proxy] .gemini-key not found — AI endpoints will return 503');
+}
+
+const ALLOWED_MODELS = new Set([
+  'gemini-pro-latest',
+  'gemini-flash-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-3-flash-preview',
+  'gemini-3-pro-preview',
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-flash-lite'
+]);
 
 const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.js'  : 'application/javascript; charset=utf-8',
-  '.mjs' : 'application/javascript; charset=utf-8',
-  '.css' : 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg' : 'image/svg+xml',
-  '.png' : 'image/png',
-  '.jpg' : 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif' : 'image/gif',
-  '.ico' : 'image/x-icon',
-  '.webp': 'image/webp',
-  '.woff': 'font/woff',
-  '.woff2':'font/woff2',
-  '.ttf' : 'font/ttf',
-  '.txt' : 'text/plain; charset=utf-8',
-  '.map' : 'application/json; charset=utf-8',
+  '.html':'text/html; charset=utf-8',
+  '.js'  :'application/javascript; charset=utf-8',
+  '.mjs' :'application/javascript; charset=utf-8',
+  '.css' :'text/css; charset=utf-8',
+  '.json':'application/json; charset=utf-8',
+  '.svg' :'image/svg+xml',
+  '.png' :'image/png',
+  '.jpg' :'image/jpeg', '.jpeg':'image/jpeg',
+  '.gif' :'image/gif', '.ico' :'image/x-icon', '.webp':'image/webp',
+  '.woff':'font/woff', '.woff2':'font/woff2', '.ttf':'font/ttf',
+  '.txt' :'text/plain; charset=utf-8', '.map':'application/json; charset=utf-8'
 };
 
 function sendFile(res, abs, status) {
@@ -38,16 +60,115 @@ function sendFile(res, abs, status) {
   fs.createReadStream(abs).pipe(res);
 }
 
+function spaFallback(res) {
+  const fallback = path.join(ROOT, 'index.html');
+  fs.stat(fallback, (err, st) => {
+    if (!err && st.isFile()) return sendFile(res, fallback, 200);
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not Found');
+  });
+}
+
+function jsonResponse(res, status, obj) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(obj));
+}
+
+// POST /api/gemini/chat  body: { model, systemPrompt, history, userMessage?, generationConfig? }
+function handleGeminiChat(req, res) {
+  if (req.method !== 'POST') {
+    return jsonResponse(res, 405, { error: 'POST only' });
+  }
+  if (!GEMINI_KEY) {
+    return jsonResponse(res, 503, { error: 'Server is not configured with a Gemini key.' });
+  }
+
+  const chunks = [];
+  let total = 0;
+  req.on('data', c => {
+    total += c.length;
+    if (total > 200_000) { req.destroy(); return; }   // 200 KB cap
+    chunks.push(c);
+  });
+  req.on('end', () => {
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+    catch { return jsonResponse(res, 400, { error: 'Invalid JSON body' }); }
+
+    const model = body.model;
+    if (typeof model !== 'string' || !ALLOWED_MODELS.has(model)) {
+      return jsonResponse(res, 400, { error: `Model not allowed. One of: ${[...ALLOWED_MODELS].join(', ')}` });
+    }
+
+    const history = Array.isArray(body.history) ? body.history : [];
+    const contents = history.map(m => ({
+      role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+      parts: [{ text: String(m.text || '') }]
+    }));
+    if (body.userMessage) contents.push({ role: 'user', parts: [{ text: String(body.userMessage) }] });
+    if (!contents.length) return jsonResponse(res, 400, { error: 'No messages to send.' });
+
+    const upstreamPayload = {
+      systemInstruction: body.systemPrompt
+        ? { parts: [{ text: String(body.systemPrompt).slice(0, 20_000) }] }
+        : undefined,
+      contents,
+      generationConfig: body.generationConfig || { temperature: 0.7, maxOutputTokens: 1024 }
+    };
+
+    const data = JSON.stringify(upstreamPayload);
+    const opts = {
+      hostname: 'generativelanguage.googleapis.com',
+      path: `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${GEMINI_KEY}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data)
+      },
+      timeout: 60_000
+    };
+
+    const upstream = https.request(opts, up => {
+      const upChunks = [];
+      up.on('data', c => upChunks.push(c));
+      up.on('end', () => {
+        const upBody = Buffer.concat(upChunks).toString('utf8');
+        res.writeHead(up.statusCode, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'X-Upstream-Status': String(up.statusCode)
+        });
+        res.end(upBody);
+      });
+    });
+    upstream.on('timeout', () => {
+      upstream.destroy();
+      jsonResponse(res, 504, { error: 'Upstream timeout' });
+    });
+    upstream.on('error', e => jsonResponse(res, 502, { error: `Upstream error: ${e.message}` }));
+    upstream.write(data);
+    upstream.end();
+  });
+  req.on('error', e => jsonResponse(res, 400, { error: e.message }));
+}
+
 const server = http.createServer((req, res) => {
   try {
     const url = decodeURI((req.url || '/').split('?')[0]);
-    // prevent path traversal
+
+    // API routes
+    if (url === '/api/gemini/chat')  return handleGeminiChat(req, res);
+    if (url === '/api/gemini/health') {
+      return jsonResponse(res, 200, {
+        ok: true,
+        keyConfigured: !!GEMINI_KEY,
+        allowedModels: [...ALLOWED_MODELS],
+        node: process.versions.node
+      });
+    }
+
+    // Static
     const rel = path.normalize(url).replace(/^([/\\])+/, '');
     const abs = path.join(ROOT, rel);
-    if (!abs.startsWith(ROOT)) {
-      res.writeHead(403).end('Forbidden');
-      return;
-    }
+    if (!abs.startsWith(ROOT)) { res.writeHead(403).end('Forbidden'); return; }
     fs.stat(abs, (err, st) => {
       if (!err && st.isFile()) return sendFile(res, abs);
       if (!err && st.isDirectory()) {
@@ -63,13 +184,5 @@ const server = http.createServer((req, res) => {
     res.writeHead(500).end('Internal error');
   }
 });
-
-function spaFallback(res) {
-  const fallback = path.join(ROOT, 'index.html');
-  fs.stat(fallback, (err, st) => {
-    if (!err && st.isFile()) return sendFile(res, fallback, 200);
-    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not Found');
-  });
-}
 
 server.listen();

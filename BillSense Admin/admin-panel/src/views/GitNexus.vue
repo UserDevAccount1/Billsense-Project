@@ -304,7 +304,7 @@ export default {
       aiBusy: false,
       aiAnalysis: null,
       aiError: '',
-      aiKeyPresent: hasGeminiKey()
+      aiKeyPresent: false  // resolved by the unified mounted() below
     }
   },
   computed: {
@@ -682,7 +682,10 @@ Be honest. If the data is sparse, say so. Never invent commit counts or specific
   beforeUnmount() {
     this.stopLiveRefresh()
   },
-  mounted() {
+  async mounted() {
+    // Probe the server-side Gemini proxy (no key in browser anymore)
+    this.aiKeyPresent = await hasGeminiKey()
+
     // Load with repo URL param — GitNexus auto-loads from ?repo=
     this.currentUrl = this.buildNexusUrl()
 
