@@ -3,9 +3,6 @@ name: Deploy Admin Panel to cPanel
 on:
   push:
     branches: [main]
-    paths:
-      - 'BillSense Admin/admin-panel/**'
-      - '.github/workflows/deploy-admin-cpanel.yml'
   workflow_dispatch:
 
 concurrency:

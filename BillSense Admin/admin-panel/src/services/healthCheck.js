@@ -20,14 +20,16 @@ export async function checkFirebase() {
 }
 
 export async function checkModelScanning() {
+  // Cloud Run idle-to-warm can take 15-30s, so give it room before flagging red.
   try {
     const start = performance.now()
-    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(10000) })
+    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(30000) })
     const latency = Math.round(performance.now() - start)
     if (res.ok) {
       const data = await res.json()
       const models = Array.isArray(data.models_loaded) ? data.models_loaded : data.scan_types || []
-      return { status: 'healthy', latency, models, details: data }
+      const coldStart = latency > 5000
+      return { status: 'healthy', latency, models, coldStart, details: data }
     }
     return { status: 'unhealthy', latency, error: `HTTP ${res.status}` }
   } catch (e) {
