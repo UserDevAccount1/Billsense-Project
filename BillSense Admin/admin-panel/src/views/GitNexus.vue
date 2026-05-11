@@ -49,6 +49,59 @@
         </div>
       </div>
 
+      <!-- AI Repo Analyzer (Gemini-powered) -->
+      <div class="ai-analyzer-panel">
+        <div class="ai-header">
+          <span class="material-icons">auto_awesome</span>
+          <strong>AI Repo Intelligence</strong>
+          <span class="ai-status" :class="aiStatusClass">
+            <span class="material-icons">{{ aiStatusIcon }}</span>
+            {{ aiStatusLabel }}
+          </span>
+        </div>
+
+        <div class="ai-input-row">
+          <input
+            type="text"
+            class="ai-input"
+            v-model="analyzeRepo"
+            placeholder="owner/repo  (e.g. UserDevAccount1/Billsense-Project)"
+            @keydown.enter.prevent="runAnalysis"
+          />
+          <button
+            class="nexus-btn primary"
+            @click="runAnalysis"
+            :disabled="aiBusy || !aiKeyPresent"
+            :title="aiKeyPresent ? 'Analyze repo with Gemini' : 'VITE_GEMINI_API_KEY not configured'"
+          >
+            <span class="material-icons" :class="{ spinning: aiBusy }">
+              {{ aiBusy ? 'hourglass_top' : 'psychology' }}
+            </span>
+            {{ aiBusy ? 'Analyzing…' : 'Analyze with AI' }}
+          </button>
+        </div>
+
+        <div v-if="aiAnalysis" class="ai-output">
+          <div class="ai-meta">
+            <span class="ai-model-tag" :class="{ fallback: aiAnalysis.fallback }">
+              {{ aiAnalysis.version || aiAnalysis.model }}
+            </span>
+            <span class="ai-latency">{{ aiAnalysis.latencyMs }}ms</span>
+            <span v-if="aiAnalysis.repoMeta" class="ai-repometa">
+              ⭐ {{ aiAnalysis.repoMeta.stargazers_count }} ·
+              {{ aiAnalysis.repoMeta.language || 'mixed' }} ·
+              {{ aiAnalysis.repoMeta.open_issues_count }} open issues
+            </span>
+          </div>
+          <div class="ai-text" v-html="renderAi(aiAnalysis.text)"></div>
+        </div>
+
+        <div v-if="aiError" class="ai-error">
+          <span class="material-icons">error</span>
+          <span>{{ aiError }}</span>
+        </div>
+      </div>
+
       <!-- Auto-Fill Config Panel -->
       <div class="autofill-panel">
         <div class="autofill-header">
@@ -204,8 +257,9 @@
 </template>
 
 <script>
+import { chat, hasGeminiKey } from '../services/gemini.js'
+
 const REPO = import.meta.env.VITE_GITNEXUS_REPO || 'UserDevAccount1/Billsense-Project'
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT || ''
 // Use same-origin proxy so we can access the iframe DOM directly
@@ -244,16 +298,145 @@ export default {
       mcpTools: [
         'explore', 'search', 'impact', 'debug', 'refactor', 'context', 'query'
       ],
-      ragEnabled: !!OPENAI_KEY
+      ragEnabled: !!OPENAI_KEY,
+      // AI Repo Analyzer state
+      analyzeRepo: REPO,
+      aiBusy: false,
+      aiAnalysis: null,
+      aiError: '',
+      aiKeyPresent: hasGeminiKey()
     }
   },
   computed: {
     statusLabel() {
       const labels = { loading: 'Loading', connected: 'Connected', unavailable: 'Unavailable' }
       return labels[this.repoStatus] || this.repoStatus
+    },
+    aiStatusClass() {
+      if (!this.aiKeyPresent) return 'err'
+      if (this.aiAnalysis?.fallback) return 'warn'
+      if (this.aiAnalysis) return 'ok'
+      return 'idle'
+    },
+    aiStatusIcon() {
+      if (!this.aiKeyPresent) return 'error'
+      if (this.aiAnalysis?.fallback) return 'warning'
+      if (this.aiAnalysis) return 'check_circle'
+      return 'auto_awesome'
+    },
+    aiStatusLabel() {
+      if (!this.aiKeyPresent) return 'No Gemini key'
+      if (this.aiAnalysis) {
+        const tag = this.aiAnalysis.fallback ? ' · fallback' : ''
+        return `Connected · ${this.aiAnalysis.version || this.aiAnalysis.model}${tag}`
+      }
+      return 'Ready'
     }
   },
   methods: {
+    async runAnalysis() {
+      const repo = (this.analyzeRepo || '').trim()
+      if (!repo || this.aiBusy) return
+      if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+        this.aiError = 'Use the "owner/repo" format, e.g. "facebook/react".'
+        return
+      }
+      this.aiBusy = true
+      this.aiError = ''
+      this.aiAnalysis = null
+      try {
+        // 1) Fetch repo metadata from GitHub API
+        const headers = { 'Accept': 'application/vnd.github+json' }
+        if (this.githubPat) headers.Authorization = `Bearer ${this.githubPat}`
+        const ghRes = await fetch(`https://api.github.com/repos/${repo}`, { headers })
+        if (!ghRes.ok) throw new Error(`GitHub: HTTP ${ghRes.status} — repo not found or rate-limited`)
+        const meta = await ghRes.json()
+
+        // 2) Build a compact context payload for Gemini
+        const ctx = {
+          name: meta.full_name,
+          description: meta.description,
+          language: meta.language,
+          languages_url: meta.languages_url,
+          stars: meta.stargazers_count,
+          forks: meta.forks_count,
+          open_issues: meta.open_issues_count,
+          size_kb: meta.size,
+          topics: meta.topics || [],
+          created_at: meta.created_at,
+          updated_at: meta.updated_at,
+          pushed_at: meta.pushed_at,
+          default_branch: meta.default_branch,
+          license: meta.license?.spdx_id,
+          archived: meta.archived,
+          homepage: meta.homepage
+        }
+
+        // 3) Pull README excerpt (best-effort, ignore errors)
+        let readme = ''
+        try {
+          const rRes = await fetch(`https://api.github.com/repos/${repo}/readme`, {
+            headers: { ...headers, Accept: 'application/vnd.github.raw' }
+          })
+          if (rRes.ok) readme = (await rRes.text()).slice(0, 4000)
+        } catch (_) { /* ignore */ }
+
+        // 4) Ask Gemini
+        const systemPrompt = `You analyze GitHub repositories for engineers evaluating whether to use, fork, or contribute. Always produce these sections, in this order, using markdown headers:
+
+## TL;DR
+One paragraph, max 3 sentences.
+
+## Stack
+Bullet list of primary languages, frameworks, and notable tools.
+
+## Health
+Activity (recent commits? archived?), license, open-issue load, maintainer responsiveness signals.
+
+## Risks
+What could go wrong if someone adopts this — staleness, license traps, single-maintainer risk, security flags.
+
+## Suggested next step
+One concrete action — "clone for evaluation", "skip — better alternatives exist", "use as reference only", etc.
+
+Be honest. If the data is sparse, say so. Never invent commit counts or specific issues.`
+
+        const userMessage = `Repo metadata (JSON):\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nREADME excerpt:\n\`\`\`\n${readme || '(no README found)'}\n\`\`\``
+
+        const res = await chat({
+          systemPrompt,
+          userMessage,
+          generationConfig: { temperature: 0.4, maxOutputTokens: 1200 }
+        })
+        this.aiAnalysis = { ...res, repoMeta: meta }
+      } catch (e) {
+        this.aiError = e.attempts
+          ? `All Gemini tiers failed: ${e.attempts.map(a => a.model + ' (' + (a.status || 'err') + ')').join(', ')}`
+          : e.message
+      } finally {
+        this.aiBusy = false
+      }
+    },
+
+    renderAi(text) {
+      // Tiny markdown — headings, bold, italic, code, lists, line breaks.
+      const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+      let out = esc(text)
+      out = out.replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      out = out.replace(/^##\s+(.+)$/gm, '<h4>$1</h4>')
+      out = out.replace(/^#\s+(.+)$/gm, '<h3>$1</h3>')
+      out = out.replace(/^- (.+)$/gm, '<li>$1</li>')
+      out = out.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>')
+      out = out.replace(/\n{2,}/g, '</p><p>')
+      out = '<p>' + out + '</p>'
+      out = out.replace(/<p>(<h\d>)/g, '$1').replace(/(<\/h\d>)<\/p>/g, '$1')
+      out = out.replace(/<p>(<ul>)/g, '$1').replace(/(<\/ul>)<\/p>/g, '$1')
+      out = out.replace(/\n/g, '<br>')
+      return out
+    },
+
     buildNexusUrl() {
       // GitNexus supports ?repo= param for auto-loading
       let url = `${NEXUS_BASE}/?repo=https://github.com/${this.repoFullName}`
@@ -916,4 +1099,94 @@ export default {
   .nexus-status-row { flex-direction: column; align-items: flex-start; }
   .nexus-actions { flex-wrap: wrap; }
 }
+
+/* AI Repo Analyzer */
+.ai-analyzer-panel {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(99,102,241,0.18);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.ai-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.ai-header .material-icons { color: #A5B4FC; }
+.ai-header strong { flex: 1; }
+.ai-status {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.7rem; border-radius: 999px;
+  font-size: 0.78rem;
+}
+.ai-status .material-icons { font-size: 0.95rem; }
+.ai-status.idle { background: rgba(255,255,255,0.05); color: #94A3B8; }
+.ai-status.ok   { background: rgba(34,197,94,0.12);  color: #4ADE80; }
+.ai-status.warn { background: rgba(251,191,36,0.12); color: #FBBF24; }
+.ai-status.err  { background: rgba(248,113,113,0.12); color: #F87171; }
+
+.ai-input-row {
+  display: flex; gap: 0.5rem; align-items: stretch;
+}
+.ai-input {
+  flex: 1;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: inherit;
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+.ai-input:focus { border-color: rgba(99,102,241,0.5); }
+
+.ai-output {
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.ai-meta {
+  display: flex; gap: 0.5rem; align-items: center;
+  font-size: 0.75rem; color: #94A3B8;
+  margin-bottom: 0.6rem; flex-wrap: wrap;
+}
+.ai-model-tag {
+  padding: 0.1rem 0.5rem; border-radius: 999px;
+  background: rgba(99,102,241,0.18); color: #A5B4FC;
+}
+.ai-model-tag.fallback { background: rgba(251,191,36,0.15); color: #FBBF24; }
+.ai-latency { opacity: 0.7; }
+.ai-repometa { margin-left: auto; opacity: 0.8; }
+
+.ai-text {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #E2E8F0;
+}
+.ai-text :deep(h3), .ai-text :deep(h4) {
+  margin: 0.9rem 0 0.35rem; font-size: 1rem;
+  color: #FFA31A;
+}
+.ai-text :deep(ul) { margin: 0.25rem 0 0.5rem 1.2rem; padding: 0; }
+.ai-text :deep(li) { margin: 0.15rem 0; }
+.ai-text :deep(code) {
+  background: rgba(0,0,0,0.3); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em;
+}
+.ai-text :deep(p) { margin: 0.5rem 0; }
+
+.ai-error {
+  margin-top: 0.75rem;
+  display: flex; gap: 0.5rem; align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: rgba(248,113,113,0.08);
+  border: 1px solid rgba(248,113,113,0.25);
+  border-radius: 8px;
+  color: #F87171; font-size: 0.85rem;
+}
+.ai-error .material-icons { font-size: 1rem; }
+
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

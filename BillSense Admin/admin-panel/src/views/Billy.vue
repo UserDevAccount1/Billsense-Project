@@ -58,7 +58,7 @@
     <footer class="footer-note">
       <span class="material-icons">info</span>
       <span>
-        Billy runs on Gemini ({{ model }}). The API key is baked into this browser bundle,
+        Billy runs on Gemini with a Pro → Flash → Flash-Lite fallback chain ({{ activeModel }}). The API key is baked into this browser bundle,
         so this works for the BillSense demo but is not appropriate for public production.
         For real production, proxy requests through a server.
       </span>
@@ -67,19 +67,7 @@
 </template>
 
 <script>
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
-
-// Auto-rotating aliases — Google maps these to the latest model in each tier.
-// Today the chain resolves to: Gemini 3.1 Pro Preview -> Gemini 3 Flash Preview
-// -> Gemini 2.5 Flash Lite. The chain auto-upgrades as Google ships new versions.
-const MODEL_CHAIN = [
-  'gemini-pro-latest',      // newest Pro tier — primary (best answers, tight free quota)
-  'gemini-flash-latest',    // newest Flash tier — first fallback (fast, generous quota)
-  'gemini-2.5-flash-lite'   // last-resort fallback — bulletproof free tier
-]
-
-const API = (model, key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
+import { chat, hasGeminiKey, MODEL_CHAIN } from '../services/gemini.js'
 
 const SYSTEM_PROMPT = `You are Billy, the AI assistant for BillSense — a Philippine peso counterfeit-detection
 app. Your job:
@@ -119,9 +107,9 @@ export default {
       ],
       draft: '',
       loading: false,
-      activeModel: MODEL_CHAIN[0],        // currently in use
-      resolvedVersion: '',                // the actual version string Google returns
-      degraded: false,                    // true when we fell back below primary
+      activeModel: MODEL_CHAIN[0],
+      resolvedVersion: '',
+      degraded: false,
       suggestions: [
         'What security features should I check on a 1000-peso bill?',
         'How do I use the Scan Bill feature?',
@@ -131,7 +119,7 @@ export default {
     }
   },
   computed: {
-    hasKey() { return !!GEMINI_KEY },
+    hasKey() { return hasGeminiKey() },
     canSend() { return this.draft.trim() && !this.loading && this.hasKey },
     statusClass() {
       if (!this.hasKey) return 'err'
@@ -178,74 +166,38 @@ export default {
     },
     async callGemini(userText) {
       this.loading = true
-      const started = performance.now()
-
-      // Build chat history once — reused across fallback attempts.
-      const history = this.messages
-        .filter(m => m.text)
-        .map(m => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.text }]
-        }))
-      const payload = {
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: history,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+      const history = this.messages.filter(m => m.text).map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        text: m.text
+      }))
+      try {
+        const res = await chat({
+          systemPrompt: SYSTEM_PROMPT,
+          history,
+          generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+        })
+        this.activeModel = res.model
+        this.resolvedVersion = res.version
+        this.degraded = res.fallback
+        this.messages.push({
+          role: 'assistant',
+          text: res.text,
+          latency: res.latencyMs,
+          model: res.version || res.model,
+          fallback: res.fallback
+        })
+      } catch (e) {
+        const detail = e.attempts
+          ? e.attempts.map(a => `- \`${a.model}\`: ${a.status ? `HTTP ${a.status}` : a.error}`).join('\n')
+          : `- \`${e.message}\``
+        this.messages.push({
+          role: 'assistant',
+          text: `⚠️ All Gemini tiers failed:\n\n${detail}\n\nTry again in a minute — free-tier Pro quota refills hourly.`
+        })
+      } finally {
+        this.loading = false
+        this.$nextTick(() => this.scrollBottom())
       }
-
-      const errors = []
-      for (let i = 0; i < MODEL_CHAIN.length; i++) {
-        const model = MODEL_CHAIN[i]
-        try {
-          const ctrl = new AbortController()
-          const t = setTimeout(() => ctrl.abort(), 45000)
-          const res = await fetch(API(model, GEMINI_KEY), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: ctrl.signal
-          })
-          clearTimeout(t)
-
-          if (!res.ok) {
-            const body = await res.text()
-            // 429 = quota exceeded; 503 = model overloaded — both should fall through.
-            if ((res.status === 429 || res.status === 503) && i < MODEL_CHAIN.length - 1) {
-              errors.push(`${model}: HTTP ${res.status}`)
-              continue
-            }
-            throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`)
-          }
-
-          const data = await res.json()
-          const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
-            || '(Billy returned an empty response — try rephrasing your question.)'
-          const latency = Math.round(performance.now() - started)
-          this.activeModel = model
-          this.resolvedVersion = data.modelVersion || ''
-          this.degraded = i > 0
-          this.messages.push({
-            role: 'assistant', text: reply, latency,
-            model: this.resolvedVersion || model,
-            fallback: i > 0
-          })
-          this.loading = false
-          this.$nextTick(() => this.scrollBottom())
-          return
-        } catch (e) {
-          errors.push(`${model}: ${e.message}`)
-          if (i >= MODEL_CHAIN.length - 1) {
-            this.messages.push({
-              role: 'assistant',
-              text: `⚠️ All Gemini tiers failed:\n\n` +
-                    errors.map(x => `- \`${x}\``).join('\n') +
-                    `\n\nTry again in a minute — the free-tier Pro quota refills hourly.`
-            })
-          }
-        }
-      }
-      this.loading = false
-      this.$nextTick(() => this.scrollBottom())
     }
   }
 }
