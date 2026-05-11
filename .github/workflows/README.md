@@ -30,11 +30,13 @@ Repo → Settings → Secrets and variables → Actions → **New repository sec
 ### 4. Add GitHub repo Variables (same page, **Variables** tab)
 | Variable | Value |
 |---|---|
-| `CPANEL_REMOTE_DIR` | `/public_html/billsense/` (must start and end with `/`) — set to whatever path step 2 revealed |
+| `CPANEL_REMOTE_DIR` | `/billsense.dev-environment.site/public/` (must start and end with `/`) |
 | `VITE_GITNEXUS_REPO` | `UserDevAccount1/Billsense-Project` (or your repo) |
 
-### 5. Get FTP credentials in cPanel
-cPanel → **FTP Accounts** → either use the main account or create a dedicated one scoped to `CPANEL_REMOTE_DIR`. Copy host/user/password to the secrets above.
+### 5. FTP credentials
+A scoped deploy FTP account named `deploy@dev-environment.site` was already created (homedir `/home/devenvir/billsense.dev-environment.site`). The password is in `tools/cpanel-mcp/.deploy-credentials.local.txt` — that file is gitignored. Copy the password into the `CPANEL_FTP_PASS` repo secret. **Do not commit it.**
+
+If you ever lose the password, regenerate it in cPanel → FTP Accounts → Change Password for `deploy@dev-environment.site`, and update the GitHub secret.
 
 ## How to deploy
 ```bash
