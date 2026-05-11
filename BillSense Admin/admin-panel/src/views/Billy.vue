@@ -20,6 +20,7 @@
           <div class="meta">
             <span class="material-icons">{{ m.role === 'user' ? 'person' : 'smart_toy' }}</span>
             <span>{{ m.role === 'user' ? 'You' : 'Billy' }}</span>
+            <span v-if="m.model" class="model-tag" :class="{ fallback: m.fallback }">{{ m.model }}</span>
             <span v-if="m.latency" class="latency">{{ m.latency }}ms</span>
           </div>
           <div class="text" v-html="renderMarkdown(m.text)"></div>
@@ -67,7 +68,16 @@
 
 <script>
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
-const MODEL = 'gemini-2.5-flash'
+
+// Auto-rotating aliases — Google maps these to the latest model in each tier.
+// Today the chain resolves to: Gemini 3.1 Pro Preview -> Gemini 3 Flash Preview
+// -> Gemini 2.5 Flash Lite. The chain auto-upgrades as Google ships new versions.
+const MODEL_CHAIN = [
+  'gemini-pro-latest',      // newest Pro tier — primary (best answers, tight free quota)
+  'gemini-flash-latest',    // newest Flash tier — first fallback (fast, generous quota)
+  'gemini-2.5-flash-lite'   // last-resort fallback — bulletproof free tier
+]
+
 const API = (model, key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
 
@@ -109,7 +119,9 @@ export default {
       ],
       draft: '',
       loading: false,
-      model: MODEL,
+      activeModel: MODEL_CHAIN[0],        // currently in use
+      resolvedVersion: '',                // the actual version string Google returns
+      degraded: false,                    // true when we fell back below primary
       suggestions: [
         'What security features should I check on a 1000-peso bill?',
         'How do I use the Scan Bill feature?',
@@ -121,9 +133,20 @@ export default {
   computed: {
     hasKey() { return !!GEMINI_KEY },
     canSend() { return this.draft.trim() && !this.loading && this.hasKey },
-    statusClass() { return this.hasKey ? 'ok' : 'err' },
-    statusIcon() { return this.hasKey ? 'check_circle' : 'error' },
-    statusLabel() { return this.hasKey ? `Connected · ${this.model}` : 'No API key' }
+    statusClass() {
+      if (!this.hasKey) return 'err'
+      return this.degraded ? 'warn' : 'ok'
+    },
+    statusIcon() {
+      if (!this.hasKey) return 'error'
+      return this.degraded ? 'warning' : 'check_circle'
+    },
+    statusLabel() {
+      if (!this.hasKey) return 'No API key'
+      const v = this.resolvedVersion ? ` (${this.resolvedVersion})` : ''
+      const tag = this.degraded ? ' · fallback' : ''
+      return `Connected · ${this.activeModel}${v}${tag}`
+    }
   },
   methods: {
     renderMarkdown(text) {
@@ -156,53 +179,73 @@ export default {
     async callGemini(userText) {
       this.loading = true
       const started = performance.now()
-      try {
-        // Build chat history in Gemini's contents shape.
-        const history = this.messages
-          .filter(m => m.text)
-          .map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.text }]
-          }))
 
-        const payload = {
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: history,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1024
+      // Build chat history once — reused across fallback attempts.
+      const history = this.messages
+        .filter(m => m.text)
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.text }]
+        }))
+      const payload = {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: history,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+      }
+
+      const errors = []
+      for (let i = 0; i < MODEL_CHAIN.length; i++) {
+        const model = MODEL_CHAIN[i]
+        try {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 45000)
+          const res = await fetch(API(model, GEMINI_KEY), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: ctrl.signal
+          })
+          clearTimeout(t)
+
+          if (!res.ok) {
+            const body = await res.text()
+            // 429 = quota exceeded; 503 = model overloaded — both should fall through.
+            if ((res.status === 429 || res.status === 503) && i < MODEL_CHAIN.length - 1) {
+              errors.push(`${model}: HTTP ${res.status}`)
+              continue
+            }
+            throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`)
+          }
+
+          const data = await res.json()
+          const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
+            || '(Billy returned an empty response — try rephrasing your question.)'
+          const latency = Math.round(performance.now() - started)
+          this.activeModel = model
+          this.resolvedVersion = data.modelVersion || ''
+          this.degraded = i > 0
+          this.messages.push({
+            role: 'assistant', text: reply, latency,
+            model: this.resolvedVersion || model,
+            fallback: i > 0
+          })
+          this.loading = false
+          this.$nextTick(() => this.scrollBottom())
+          return
+        } catch (e) {
+          errors.push(`${model}: ${e.message}`)
+          if (i >= MODEL_CHAIN.length - 1) {
+            this.messages.push({
+              role: 'assistant',
+              text: `⚠️ All Gemini tiers failed:\n\n` +
+                    errors.map(x => `- \`${x}\``).join('\n') +
+                    `\n\nTry again in a minute — the free-tier Pro quota refills hourly.`
+            })
           }
         }
-
-        const ctrl = new AbortController()
-        const t = setTimeout(() => ctrl.abort(), 45000)
-        const res = await fetch(API(this.model, GEMINI_KEY), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: ctrl.signal
-        })
-        clearTimeout(t)
-
-        if (!res.ok) {
-          const err = await res.text()
-          throw new Error(`HTTP ${res.status}: ${err.slice(0, 300)}`)
-        }
-        const data = await res.json()
-        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
-          || '(Billy returned an empty response — try rephrasing your question.)'
-        const latency = Math.round(performance.now() - started)
-        this.messages.push({ role: 'assistant', text: reply, latency })
-      } catch (e) {
-        this.messages.push({
-          role: 'assistant',
-          text: `⚠️ I hit an error reaching Gemini: \`${e.message}\`.\n\n` +
-                'Check the network tab or try again in a moment.'
-        })
-      } finally {
-        this.loading = false
-        this.$nextTick(() => this.scrollBottom())
       }
+      this.loading = false
+      this.$nextTick(() => this.scrollBottom())
     }
   }
 }
@@ -244,8 +287,9 @@ export default {
   font-size: 0.85rem;
 }
 .status .material-icons { font-size: 1.05rem; }
-.status.ok  { background: rgba(34,197,94,0.12);  color: #4ADE80; }
-.status.err { background: rgba(248,113,113,0.12); color: #F87171; }
+.status.ok   { background: rgba(34,197,94,0.12);  color: #4ADE80; }
+.status.warn { background: rgba(251,191,36,0.12); color: #FBBF24; }
+.status.err  { background: rgba(248,113,113,0.12); color: #F87171; }
 
 .chat-scroll {
   flex: 1;
@@ -274,6 +318,18 @@ export default {
   font-size: 0.78rem; color: #94A3B8; margin-bottom: 0.35rem;
 }
 .meta .material-icons { font-size: 0.95rem; }
+.model-tag {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.18);
+  color: #A5B4FC;
+  letter-spacing: 0.02em;
+}
+.model-tag.fallback {
+  background: rgba(251,191,36,0.15);
+  color: #FBBF24;
+}
 .latency { margin-left: auto; opacity: 0.7; }
 .text { font-size: 0.95rem; line-height: 1.55; word-wrap: break-word; }
 .text :deep(code) {
