@@ -11,6 +11,17 @@
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "billsense-cpanel": {
+      "command": "node",
+      "args": ["./tools/cpanel-mcp/server.mjs"],
+      "env": {
+        "CPANEL_HOST": "billsense.dev-environment.site",
+        "CPANEL_PORT": "2083",
+        "CPANEL_USER": "${CPANEL_USER}",
+        "CPANEL_TOKEN": "${CPANEL_TOKEN}",
+        "CPANEL_STRICT_SSL": "false"
+      }
     }
   }
 }
