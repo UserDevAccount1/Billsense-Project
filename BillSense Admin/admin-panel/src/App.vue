@@ -24,6 +24,12 @@
             </router-link>
           </li>
           <li>
+            <router-link to="/billy" @click="mobileMenuOpen = false">
+              <span class="material-icons">smart_toy</span>
+              <span class="nav-text">Billy AI</span>
+            </router-link>
+          </li>
+          <li>
             <a href="#" @click="mobileMenuOpen = false">
               <span class="material-icons">qr_code_scanner</span>
               <span class="nav-text">Scan Reports</span>
