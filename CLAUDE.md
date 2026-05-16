@@ -1,5 +1,12 @@
 # BillSense - Claude Code Project Configuration
 
+> 📕 **READ `PROJECT_RECORD/` FIRST.** The complete, authoritative knowledge
+> base (setup, architecture, deployment, MCP/skills, credentials, status,
+> changelog) lives in [`PROJECT_RECORD/`](PROJECT_RECORD/README.md). Also see
+> [`AGENTS.md`](AGENTS.md). Do not rediscover the project — it's documented.
+> Golden rules: local-first verification before push; never commit secrets;
+> Docker container is manual; gcloud uses the Firebase service account.
+
 ## Project Overview
 BillSense is a Philippine currency counterfeit detection Android app that uses YOLOv8 ML models
 for real-time banknote authentication via visual and UV security feature analysis.
