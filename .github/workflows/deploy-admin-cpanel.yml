@@ -61,7 +61,11 @@ jobs:
           port: 21
           local-dir: BillSense Admin/admin-panel/dist/
           server-dir: ${{ vars.CPANEL_REMOTE_DIR }}
-          dangerous-clean-slate: false
+          # Full clean upload every deploy. The incremental sync-state on
+          # iFastNet drifts (deploy reports success but skips changed files,
+          # leaving cPanel frozen on an old bundle). The SPA is ~5 files /
+          # ~750 KB so a clean slate every time is cheap and reliable.
+          dangerous-clean-slate: true
           exclude: |
             **/.git*
             **/.git*/**
