@@ -74,7 +74,10 @@ function spaFallback(res) {
 const CORS_ALLOWLIST = new Set([
   'https://bill-sense-aec6b.web.app',
   'https://bill-sense-aec6b.firebaseapp.com',
-  'https://billsense.dev-environment.site'
+  'https://billsense.dev-environment.site',
+  'http://localhost:3000',   // local Docker container (billsense-admin)
+  'http://localhost:3001',   // local Vite dev server (vite.config.js port)
+  'http://localhost:5173'    // Vite default port (fallback)
 ]);
 
 function applyCors(req, res) {
