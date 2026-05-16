@@ -13,6 +13,9 @@
         <button :class="{ on: tab==='full' }" @click="tab='full'">
           <span class="material-icons">menu_book</span> Full Document
         </button>
+        <button :class="{ on: tab==='compare' }" @click="tab='compare'">
+          <span class="material-icons">compare_arrows</span> Compare (Before / After)
+        </button>
         <button :class="{ on: tab==='valid' }" @click="tab='valid'">
           <span class="material-icons">fact_check</span> Validation <em>{{ score }}%</em>
         </button>
@@ -71,6 +74,47 @@
           <div v-for="key in orderedSectionKeys" :key="key" class="paper-sec">
             <h3>{{ sectionTitle(key) }}</h3>
             <div class="paper-body" v-html="highlight(stripHtml(curVersion.sections[key].content))"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== COMPARE (before / after) ===== -->
+      <div v-else-if="tab==='compare'" class="cmp">
+        <div class="cmp-bar">
+          <div class="cmp-pick">
+            <label class="lbl">Before</label>
+            <select v-model="cmpA" class="sel sm">
+              <option v-for="v in versions" :key="v._key" :value="v._key">
+                v{{ v.versionNumber }} — {{ v.author }} — {{ (v.date||'').slice(0,10) }}
+              </option>
+            </select>
+          </div>
+          <span class="material-icons cmp-arrow">arrow_forward</span>
+          <div class="cmp-pick">
+            <label class="lbl">After</label>
+            <select v-model="cmpB" class="sel sm">
+              <option v-for="v in versions" :key="v._key" :value="v._key">
+                v{{ v.versionNumber }} — {{ v.author }} — {{ (v.date||'').slice(0,10) }}
+              </option>
+            </select>
+          </div>
+          <div class="cmp-legend">
+            <span class="lg add">added</span><span class="lg del">removed</span>
+            <span class="cmp-sum">{{ changedSections.length }} of {{ allCmpKeys.length }} sections changed</span>
+          </div>
+        </div>
+
+        <div v-if="cmpA === cmpB" class="state">Pick two different versions to compare.</div>
+        <div v-else class="cmp-secs">
+          <div v-for="k in allCmpKeys" :key="k" class="cmp-sec" :class="{ unchanged: !isChanged(k) }">
+            <div class="cmp-sec-head" @click="toggleSec(k)">
+              <span class="material-icons">{{ openCmp[k] ? 'expand_more' : 'chevron_right' }}</span>
+              <strong>{{ cmpTitle(k) }}</strong>
+              <span class="cmp-tag" :class="isChanged(k) ? 'chg' : 'same'">
+                {{ isChanged(k) ? changeStat(k) : 'no change' }}
+              </span>
+            </div>
+            <div v-if="openCmp[k]" class="cmp-diff" v-html="diffHtml(k)"></div>
           </div>
         </div>
       </div>
@@ -175,11 +219,20 @@ export default {
       tab:'doc', loading:true, error:'', toast:null,
       versions:[], panelRequests:[], selVer:'', selSec:'', q:'',
       nv:null, nvSaving:false,
-      aiSug:{}, aiBusy:false, aiOk:false
+      aiSug:{}, aiBusy:false, aiOk:false,
+      cmpA:'', cmpB:'', openCmp:{}
     }
   },
   computed: {
     curVersion(){ return this.versions.find(v=>v._key===this.selVer)||null },
+    cmpVerA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
+    cmpVerB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
+    allCmpKeys(){
+      const a=this.cmpVerA&&this.cmpVerA.sections||{}
+      const b=this.cmpVerB&&this.cmpVerB.sections||{}
+      return [...new Set([...Object.keys(a),...Object.keys(b)])]
+    },
+    changedSections(){ return this.allCmpKeys.filter(k=>this.isChanged(k)) },
     orderedSectionKeys(){
       const s=this.curVersion&&this.curVersion.sections; if(!s)return []
       return Object.keys(s)
@@ -232,11 +285,65 @@ export default {
         this.selVer=this.versions[this.versions.length-1]._key
         const s=this.curVersion&&this.curVersion.sections
         if(s)this.selSec=Object.keys(s)[0]
+        // Compare defaults: oldest (before) vs newest (after)
+        this.cmpA=this.versions[0]._key
+        this.cmpB=this.versions[this.versions.length-1]._key
       }
       this.aiOk = await hasGeminiKey()
     } catch(e){ this.error=e.message } finally { this.loading=false }
   },
   methods: {
+    // ---- Compare (before / after) ----
+    cmpContent(ver,k){
+      const s=ver&&ver.sections&&ver.sections[k]
+      return s?this.stripHtml(s.content):''
+    },
+    cmpTitle(k){
+      const va=this.cmpVerA&&this.cmpVerA.sections&&this.cmpVerA.sections[k]
+      const vb=this.cmpVerB&&this.cmpVerB.sections&&this.cmpVerB.sections[k]
+      return (vb&&vb.title)||(va&&va.title)||
+        String(k||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).replace(/Chapter(\d)/,'Chapter $1 —')
+    },
+    isChanged(k){ return this.cmpContent(this.cmpVerA,k)!==this.cmpContent(this.cmpVerB,k) },
+    changeStat(k){
+      const a=this.cmpContent(this.cmpVerA,k).split(/\s+/).filter(Boolean).length
+      const b=this.cmpContent(this.cmpVerB,k).split(/\s+/).filter(Boolean).length
+      const d=b-a
+      return d===0?'edited':(d>0?`+${d} words`:`${d} words`)
+    },
+    toggleSec(k){ this.openCmp={...this.openCmp,[k]:!this.openCmp[k]} },
+    // Word-level LCS diff -> tokens [{t:'eq|add|del', s}]
+    diffWords(before,after){
+      const A=before.split(/(\s+)/), B=after.split(/(\s+)/)
+      const n=A.length, m=B.length
+      // LCS table (cap to keep it cheap on huge sections)
+      if(n*m>1500000){ // too big for full LCS; coarse fallback
+        return before===after?[{t:'eq',s:after}]:[{t:'del',s:before},{t:'add',s:after}]
+      }
+      const dp=Array.from({length:n+1},()=>new Int32Array(m+1))
+      for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)
+        dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1])
+      const out=[]; let i=0,j=0
+      const push=(t,s)=>{ if(!s)return; const l=out[out.length-1]; if(l&&l.t===t)l.s+=s; else out.push({t,s}) }
+      while(i<n&&j<m){
+        if(A[i]===B[j]){ push('eq',A[i]); i++; j++ }
+        else if(dp[i+1][j]>=dp[i][j+1]){ push('del',A[i]); i++ }
+        else { push('add',B[j]); j++ }
+      }
+      while(i<n){ push('del',A[i]); i++ }
+      while(j<m){ push('add',B[j]); j++ }
+      return out
+    },
+    diffHtml(k){
+      const a=this.cmpContent(this.cmpVerA,k), b=this.cmpContent(this.cmpVerB,k)
+      if(a===b) return '<span class="d-eq">'+this.esc(b||'(empty)')+'</span>'
+      return this.diffWords(a,b).map(tok=>{
+        const s=this.esc(tok.s)
+        if(tok.t==='add') return '<span class="d-add">'+s+'</span>'
+        if(tok.t==='del') return '<span class="d-del">'+s+'</span>'
+        return '<span class="d-eq">'+s+'</span>'
+      }).join('')
+    },
     sectionTitle(k){
       const t=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[k]&&this.curVersion.sections[k].title
       if(t)return t
@@ -385,4 +492,28 @@ export default {
 .toast.ok { background:rgba(34,197,94,.18); color:#4ade80; border:1px solid rgba(34,197,94,.3); }
 .toast.err { background:rgba(248,113,113,.18); color:#f87171; border:1px solid rgba(248,113,113,.3); }
 .toast .material-icons { font-size:1.05rem; }
+
+/* Compare (before / after) */
+.cmp-bar { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+.cmp-pick { display:flex; flex-direction:column; }
+.cmp-arrow { color:var(--text-muted); margin-bottom:.4rem; }
+.cmp-legend { display:flex; align-items:center; gap:.6rem; margin-left:auto; font-size:.78rem; color:var(--text-muted); flex-wrap:wrap; }
+.lg { padding:.12rem .5rem; border-radius:999px; font-size:.72rem; }
+.lg.add { background:rgba(34,197,94,.18); color:#4ade80; }
+.lg.del { background:rgba(248,113,113,.18); color:#f87171; }
+.cmp-sum { margin-left:.4rem; }
+.cmp-secs { display:flex; flex-direction:column; gap:.6rem; }
+.cmp-sec { background:var(--bg-card); border:1px solid rgba(255,255,255,.06); border-radius:10px; }
+.cmp-sec.unchanged { opacity:.55; }
+.cmp-sec-head { display:flex; align-items:center; gap:.5rem; padding:.7rem 1rem; cursor:pointer; }
+.cmp-sec-head .material-icons { font-size:1.1rem; color:var(--text-muted); }
+.cmp-sec-head strong { flex:1; font-size:.9rem; }
+.cmp-tag { font-size:.7rem; padding:.12rem .5rem; border-radius:999px; }
+.cmp-tag.chg { background:rgba(255,163,26,.18); color:#ffa31a; }
+.cmp-tag.same { background:rgba(148,163,184,.15); color:#94a3b8; }
+.cmp-diff { padding:1rem 1.25rem; border-top:1px solid rgba(255,255,255,.05); white-space:pre-wrap;
+  font-size:.88rem; line-height:1.7; max-height:60vh; overflow-y:auto; }
+.cmp-diff :deep(.d-add) { background:rgba(34,197,94,.22); color:#86efac; }
+.cmp-diff :deep(.d-del) { background:rgba(248,113,113,.22); color:#fca5a5; text-decoration:line-through; }
+.cmp-diff :deep(.d-eq) { color:var(--text); }
 </style>

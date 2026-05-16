@@ -67,6 +67,18 @@ Chronological summary of what was done and why. Commits are on `main`.
     Firebase SA bypassed the "access blocked" interactive-login wall;
     enabled pulling the 9.93 GB ML container and any `bill-sense-aec6b` GCP op.
 17. **This knowledge record** — `PROJECT_RECORD/` + `AGENTS.md`.
+20. **Thesis Compare (before/after diff)** — the missing version-comparison
+    feature. New "Compare (Before / After)" tab: pick Before + After
+    versions, per-section word-level LCS diff with added (green) /
+    removed (red strike) / unchanged highlighting, changed-section count,
+    per-section change stats, collapsible sections. Pure-JS LCS diff
+    (capped for huge sections). Verified: diff engine correctly
+    identifies add/del/eq on differing text and a single eq block on
+    identical text. NOTE: seed versions v1/v2/v3 have byte-identical
+    section content (differ only by author/changesSummary metadata) so
+    the live compare honestly shows "0 changed" until a real edited
+    version exists (via the New Version button).
+
 19. **Forgotten-feature audit + 5 pages built** — git history was clean (no
     lost files; pre-reorg paths only). Real gap = Firebase data with no
     page. Added `Support, Agents, Trivia, Tutorials, "Billy Chats"` to the
