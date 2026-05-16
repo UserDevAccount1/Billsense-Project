@@ -181,7 +181,9 @@ export default {
       return Object.values(this.devTools)
     },
     allStatuses() {
-      const pipeline = this.pipelineConnections.map(c => c.overall)
+      // 'optional' (e.g. local Docker mirror not running) is a non-problem
+      // state — count it as healthy so it doesn't inflate the error tally.
+      const pipeline = this.pipelineConnections.map(c => c.overall === 'optional' ? 'healthy' : c.overall)
       const devStatuses = this.devToolConnections.map(s => {
         if (['healthy', 'connected', 'running', 'configured', 'deployed', 'available'].includes(s.status)) return 'healthy'
         if (['warning', 'no-models', 'not-found', 'stopped', 'partial'].includes(s.status)) return 'warning'

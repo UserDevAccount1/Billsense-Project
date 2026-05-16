@@ -107,19 +107,21 @@ export async function checkDockerConnection() {
       checklist[4].status = 'pass'
       details.responseTime = result.latency
     } else {
-      checklist.forEach(c => { c.status = 'fail' })
-      details.error = result.error || 'Docker container not running'
+      // Optional local dev mirror — not running. This is NOT an error:
+      // production ML inference runs on Cloud Run (checked separately).
+      checklist.forEach(c => { c.status = 'skip' })
+      details.note = 'Optional — local container not running. Production ML uses Cloud Run (see GCP Cloud Run card). Start locally with: docker compose up billsense-api'
     }
   } catch (e) {
-    checklist.forEach(c => { c.status = 'fail' })
-    details.error = e.message
+    checklist.forEach(c => { c.status = 'skip' })
+    details.note = 'Optional — local container not reachable. Production ML uses Cloud Run.'
   }
 
   return {
     id: 'docker',
     name: 'Docker Container',
     icon: 'inventory_2',
-    description: 'Local development FastAPI container for debugging and testing ML inference. Mirrors the Cloud Run production environment.',
+    description: 'OPTIONAL local FastAPI mirror for debugging ML inference. Production inference runs on Cloud Run — this being offline does not affect the app.',
     checklist,
     details,
     overall: getOverallStatus(checklist)
@@ -280,7 +282,8 @@ export async function checkFirebaseMLConnection() {
  */
 function getOverallStatus(checklist) {
   const statuses = checklist.map(c => c.status)
-  if (statuses.every(s => s === 'pass')) return 'healthy'
+  if (statuses.every(s => s === 'skip')) return 'optional'
+  if (statuses.every(s => s === 'pass' || s === 'skip')) return 'healthy'
   if (statuses.some(s => s === 'fail')) return 'error'
   if (statuses.some(s => s === 'warn')) return 'warning'
   return 'checking'
