@@ -67,6 +67,15 @@ Chronological summary of what was done and why. Commits are on `main`.
     Firebase SA bypassed the "access blocked" interactive-login wall;
     enabled pulling the 9.93 GB ML container and any `bill-sense-aec6b` GCP op.
 17. **This knowledge record** — `PROJECT_RECORD/` + `AGENTS.md`.
+18. **Thesis Validator page restored** — was entirely missing (no `Thesis.vue`,
+    route, or nav; only the `thesis-validator-agent` skill existed) while
+    Firebase held `thesis_versions` (3 versions × 12 sections) and
+    `thesis_panel_requests` (panel comments). Added both paths to the proxy
+    `DB_ROOTS` allowlist; built `src/views/Thesis.vue` (version selector +
+    section navigator + content viewer; Panel Comments tab with per-comment
+    and per-request status CRUD via the SA proxy); `/thesis` route + sidebar
+    link. Verified local-first: 3 versions, 12 real sections, 55K-char
+    content, comment status write persisted + reverted.
 
 ## Recurring lessons (don't relearn the hard way)
 

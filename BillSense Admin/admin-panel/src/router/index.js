@@ -5,6 +5,7 @@ import GitNexus from '../views/GitNexus.vue'
 import ApkManagement from '../views/ApkManagement.vue'
 import AppTesting from '../views/AppTesting.vue'
 import Billy from '../views/Billy.vue'
+import Thesis from '../views/Thesis.vue'
 import Login from '../views/Login.vue'
 import Users from '../views/Users.vue'
 import ScanReports from '../views/ScanReports.vue'
@@ -27,6 +28,7 @@ const routes = [
   { path: '/gitnexus', name: 'GitNexus', component: GitNexus },
   { path: '/cases', name: 'Cases', component: Cases },
   { path: '/voting-posts', name: 'VotingPosts', component: VotingPosts },
+  { path: '/thesis', name: 'Thesis', component: Thesis },
   { path: '/settings', name: 'Settings', component: Settings }
 ]
 

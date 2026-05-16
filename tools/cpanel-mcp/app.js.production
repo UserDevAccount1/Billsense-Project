@@ -117,7 +117,8 @@ function rtdb(method, pathSeg, jsonBody) {
 const DB_ROOTS = new Set([
   'Users', 'Cases', 'Voting Posts', 'session_reports', 'ml_config',
   'Announcements', 'Bills', 'Detections', 'Notifications',
-  'Standard Scan', 'Multi Scan', 'Video Scan', 'billy_analytics'
+  'Standard Scan', 'Multi Scan', 'Video Scan', 'billy_analytics',
+  'thesis_versions', 'thesis_panel_requests'
 ]);
 function rootAllowed(p) {
   const root = String(p || '').split('/')[0];

@@ -84,6 +84,12 @@
             </router-link>
           </li>
           <li>
+            <router-link to="/thesis" @click="mobileMenuOpen = false">
+              <span class="material-icons">menu_book</span>
+              <span class="nav-text">Thesis Validator</span>
+            </router-link>
+          </li>
+          <li>
             <router-link to="/settings" @click="mobileMenuOpen = false">
               <span class="material-icons">settings</span>
               <span class="nav-text">Settings</span>
