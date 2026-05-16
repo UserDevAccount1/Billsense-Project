@@ -67,6 +67,21 @@ Chronological summary of what was done and why. Commits are on `main`.
     Firebase SA bypassed the "access blocked" interactive-login wall;
     enabled pulling the 9.93 GB ML container and any `bill-sense-aec6b` GCP op.
 17. **This knowledge record** — `PROJECT_RECORD/` + `AGENTS.md`.
+19. **Forgotten-feature audit + 5 pages built** — git history was clean (no
+    lost files; pre-reorg paths only). Real gap = Firebase data with no
+    page. Added `Support, Agents, Trivia, Tutorials, "Billy Chats"` to the
+    proxy `DB_ROOTS` allowlist and built: `SupportTickets.vue` (tickets +
+    embedded chat viewer + status/archive CRUD), `Agents.vue` (agent
+    cards + status CRUD), `Notifications.vue` (29-row log + Billy Chats
+    conversation review), `Content.vue` (Trivia/Tutorials tabs + delete).
+    Expanded `Thesis.vue` to full spec: cross-section search w/ highlight,
+    Full Document academic-format viewer, Validation tab (5 checks →
+    score%, currently 80%), New Version (clone+edit+save via proxy),
+    per-comment AI-suggest (uses the Gemini proxy). All 5 wired into
+    router + sidebar. Local-first verified every page (Support 1, Agents
+    1, Notifications 29 / chats 3, Content trivia 7/tut 2, Thesis tabs +
+    80% score + 12-section full doc).
+
 18. **Thesis Validator page restored** — was entirely missing (no `Thesis.vue`,
     route, or nav; only the `thesis-validator-agent` skill existed) while
     Firebase held `thesis_versions` (3 versions × 12 sections) and

@@ -90,6 +90,30 @@
             </router-link>
           </li>
           <li>
+            <router-link to="/support" @click="mobileMenuOpen = false">
+              <span class="material-icons">support_agent</span>
+              <span class="nav-text">Support Tickets</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link to="/agents" @click="mobileMenuOpen = false">
+              <span class="material-icons">badge</span>
+              <span class="nav-text">Agents</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link to="/notifications" @click="mobileMenuOpen = false">
+              <span class="material-icons">notifications</span>
+              <span class="nav-text">Notifications</span>
+            </router-link>
+          </li>
+          <li>
+            <router-link to="/content" @click="mobileMenuOpen = false">
+              <span class="material-icons">library_books</span>
+              <span class="nav-text">Content</span>
+            </router-link>
+          </li>
+          <li>
             <router-link to="/settings" @click="mobileMenuOpen = false">
               <span class="material-icons">settings</span>
               <span class="nav-text">Settings</span>

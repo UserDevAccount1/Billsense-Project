@@ -6,6 +6,10 @@ import ApkManagement from '../views/ApkManagement.vue'
 import AppTesting from '../views/AppTesting.vue'
 import Billy from '../views/Billy.vue'
 import Thesis from '../views/Thesis.vue'
+import SupportTickets from '../views/SupportTickets.vue'
+import Agents from '../views/Agents.vue'
+import Notifications from '../views/Notifications.vue'
+import Content from '../views/Content.vue'
 import Login from '../views/Login.vue'
 import Users from '../views/Users.vue'
 import ScanReports from '../views/ScanReports.vue'
@@ -29,6 +33,10 @@ const routes = [
   { path: '/cases', name: 'Cases', component: Cases },
   { path: '/voting-posts', name: 'VotingPosts', component: VotingPosts },
   { path: '/thesis', name: 'Thesis', component: Thesis },
+  { path: '/support', name: 'SupportTickets', component: SupportTickets },
+  { path: '/agents', name: 'Agents', component: Agents },
+  { path: '/notifications', name: 'Notifications', component: Notifications },
+  { path: '/content', name: 'Content', component: Content },
   { path: '/settings', name: 'Settings', component: Settings }
 ]
 
