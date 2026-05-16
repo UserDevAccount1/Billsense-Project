@@ -262,8 +262,32 @@ import { chat, hasGeminiKey } from '../services/gemini.js'
 const REPO = import.meta.env.VITE_GITNEXUS_REPO || 'UserDevAccount1/Billsense-Project'
 const OPENAI_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 const GITHUB_PAT = import.meta.env.VITE_GITHUB_PAT || ''
-// Use same-origin proxy so we can access the iframe DOM directly
-const NEXUS_BASE = '/gitnexus-proxy'
+// GitNexus origin resolution.
+//
+// The same-origin reverse-proxy at /gitnexus-proxy only exists in the
+// Vite dev server and the Docker nginx image. The live deployments
+// (cPanel Node app.js, Firebase static) have NO such proxy, so pointing
+// the iframe at /gitnexus-proxy makes the SPA catch-all serve index.html
+// -> the iframe recursively loads the whole dashboard (the "double
+// sidebar / loads my dashboard" bug).
+//
+// Only hosts that actually run the proxy may use the same-origin path
+// (enables cross-frame DOM auto-fill). Everywhere else we embed the real
+// GitNexus directly — it sends no X-Frame-Options/CSP so it iframes fine
+// cross-origin; the only thing lost is in-iframe DOM auto-fill.
+const GITNEXUS_DIRECT = 'https://gitnexus.vercel.app'
+
+function nexusBase() {
+  if (typeof window === 'undefined') return GITNEXUS_DIRECT
+  const h = window.location.hostname
+  const port = window.location.port
+  const hasProxy =
+    (h === 'localhost' && (port === '3000' || port === '3001')) || // Docker nginx / Vite dev
+    h === '127.0.0.1'
+  return hasProxy ? '/gitnexus-proxy' : GITNEXUS_DIRECT
+}
+// Kept as a name for existing references; resolves per-call.
+const NEXUS_BASE = nexusBase()
 
 export default {
   name: 'GitNexus',
@@ -501,6 +525,19 @@ Be honest. If the data is sparse, say so. Never invent commit counts or specific
      * through the same origin via Vite proxy (dev) or Nginx proxy (Docker).
      */
     async autoFillIframe() {
+      // Cross-frame DOM auto-fill only works when GitNexus is served
+      // same-origin via the /gitnexus-proxy reverse-proxy (Vite dev /
+      // Docker nginx). On cPanel/Firebase the iframe is the real
+      // cross-origin gitnexus.vercel.app — the browser forbids reaching
+      // into its DOM. Degrade gracefully: open GitNexus in a new tab
+      // with the repo pre-filled via the ?repo= URL param.
+      if (!String(NEXUS_BASE).startsWith('/')) {
+        this.showToast('Opening GitNexus with the repo pre-filled (auto-fill needs local proxy mode)…', 'info')
+        window.open(this.buildNexusUrl(), '_blank', 'noopener')
+        this.fillStatus = 'idle'
+        return
+      }
+
       this.fillStatus = 'filling'
       this.showToast('Auto-filling repo URL and PAT in the iframe...', 'info')
 
