@@ -1,79 +1,83 @@
-// Firebase RTDB read helper via the REST endpoint.
+// Firebase RTDB access — routed through the authenticated cPanel proxy.
 //
-// The dashboard only READS data. The RTDB currently allows public read, so
-// the REST endpoint works without auth and avoids SDK weight/edge-cases.
-// Path names match the Android app's real schema (capitalised, spaces):
-//   Users · Cases · "Voting Posts" · Detections · "Standard Scan" ·
-//   "Multi Scan" · "Video Scan" · session_reports · ml_config ·
-//   billy_analytics · Bills · Announcements · Notifications
+// The browser NEVER talks to RTDB directly. All reads/writes go to
+// /api/db/* on the cPanel Node app, which authenticates with a Firebase
+// service account (server-only key). This lets the RTDB security rules
+// deny all public access while the dashboard keeps working.
 //
-// If rules are later locked to auth!=null, swap fetchJson() to use the
-// Firebase SDK + an ID token. The view code below won't need changes.
+// Same exported API as before (list/value/count/patch/remove/timeAgo)
+// so the views are unchanged.
 
-const DB = 'https://bill-sense-aec6b-default-rtdb.firebaseio.com'
+const CPANEL_PROXY_ORIGIN = 'https://billsense.dev-environment.site'
 
-async function fetchJson(path, query = '') {
-  const url = `${DB}/${path.split('/').map(encodeURIComponent).join('/')}.json` +
-              (query ? `?${query}` : '')
+function proxyBase() {
+  if (typeof window === 'undefined') return CPANEL_PROXY_ORIGIN
+  return window.location.hostname === 'billsense.dev-environment.site'
+    ? ''                       // same-origin on cPanel
+    : CPANEL_PROXY_ORIGIN      // cross-origin from Firebase / localhost
+}
+
+async function dbCall(op, pathOrBody) {
+  const body = typeof pathOrBody === 'string' ? { path: pathOrBody } : pathOrBody
   const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 15000)
+  const t = setTimeout(() => ctrl.abort(), 20000)
   try {
-    const r = await fetch(url, { signal: ctrl.signal })
-    clearTimeout(t)
-    if (!r.ok) throw new Error(`RTDB ${path}: HTTP ${r.status}`)
-    return await r.json()
+    const r = await fetch(`${proxyBase()}/api/db/${op}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok || j.ok === false) {
+      throw new Error(j.error || `db/${op}: HTTP ${r.status}`)
+    }
+    return j.data
   } finally {
     clearTimeout(t)
   }
 }
 
-// Returns an array of { _key, ...record } from a collection object.
+let _saState = null
+export async function dbReady() {
+  if (_saState !== null) return _saState
+  try {
+    const r = await fetch(`${proxyBase()}/api/db/health`, { signal: AbortSignal.timeout(6000) })
+    if (!r.ok) return (_saState = false)
+    const j = await r.json()
+    return (_saState = !!j.saConfigured)
+  } catch {
+    return (_saState = false)
+  }
+}
+
+// Array of { _key, ...record } from a collection object.
 export async function list(path) {
-  const obj = await fetchJson(path)
+  const obj = await dbCall('get', path)
   if (!obj || typeof obj !== 'object') return []
   return Object.entries(obj).map(([_key, v]) =>
     (v && typeof v === 'object') ? { _key, ...v } : { _key, _value: v }
   )
 }
 
-// Raw value at a path.
 export async function value(path) {
-  return fetchJson(path)
+  return dbCall('get', path)
 }
 
-function pathUrl(path) {
-  return `${DB}/${path.split('/').map(encodeURIComponent).join('/')}.json`
+export async function count(path) {
+  const obj = await dbCall('get', path)
+  return obj && typeof obj === 'object' ? Object.keys(obj).length : 0
 }
 
-// Merge fields into an existing record (RTDB PATCH).
 export async function patch(path, partial) {
-  const r = await fetch(pathUrl(path), {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(partial),
-    signal: AbortSignal.timeout(15000)
-  })
-  if (!r.ok) throw new Error(`PATCH ${path}: HTTP ${r.status}`)
-  return r.json()
+  return dbCall('patch', { path, data: partial })
 }
 
-// Delete a record/subtree (RTDB DELETE).
 export async function remove(path) {
-  const r = await fetch(pathUrl(path), {
-    method: 'DELETE',
-    signal: AbortSignal.timeout(15000)
-  })
-  if (!r.ok) throw new Error(`DELETE ${path}: HTTP ${r.status}`)
+  await dbCall('delete', { path })
   return true
 }
 
-// Count of children without pulling all data.
-export async function count(path) {
-  const shallow = await fetchJson(path, 'shallow=true')
-  return shallow && typeof shallow === 'object' ? Object.keys(shallow).length : 0
-}
-
-// Best-effort relative time.
 export function timeAgo(input) {
   if (!input) return ''
   let ms
