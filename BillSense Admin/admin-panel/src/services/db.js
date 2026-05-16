@@ -41,6 +41,32 @@ export async function value(path) {
   return fetchJson(path)
 }
 
+function pathUrl(path) {
+  return `${DB}/${path.split('/').map(encodeURIComponent).join('/')}.json`
+}
+
+// Merge fields into an existing record (RTDB PATCH).
+export async function patch(path, partial) {
+  const r = await fetch(pathUrl(path), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(partial),
+    signal: AbortSignal.timeout(15000)
+  })
+  if (!r.ok) throw new Error(`PATCH ${path}: HTTP ${r.status}`)
+  return r.json()
+}
+
+// Delete a record/subtree (RTDB DELETE).
+export async function remove(path) {
+  const r = await fetch(pathUrl(path), {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(15000)
+  })
+  if (!r.ok) throw new Error(`DELETE ${path}: HTTP ${r.status}`)
+  return true
+}
+
 // Count of children without pulling all data.
 export async function count(path) {
   const shallow = await fetchJson(path, 'shallow=true')
