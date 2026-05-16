@@ -5,6 +5,18 @@
       <p>Feature validation, test execution, and quality assurance for BillSense</p>
     </div>
 
+    <div v-if="isRemoteSite" class="local-only-banner">
+      <span class="material-icons">desktop_windows</span>
+      <div>
+        <strong>Local developer tool</strong>
+        <p>App Testing drives ADB, the emulator and Gradle on <em>your</em> machine via the
+        dev-server (<code>localhost:3003</code>). A browser on the live site cannot reach your
+        machine, so test execution is disabled here. To run tests: open the dashboard at
+        <code>http://localhost:3000</code> (Docker) or <code>http://localhost:3001</code> (Vite)
+        with <code>node dev-server.mjs</code> running. The catalog below is informational.</p>
+      </div>
+    </div>
+
     <div class="dashboard-content">
       <!-- Test Summary Bar -->
       <div class="test-summary">
@@ -785,6 +797,10 @@ export default {
       if (tester?.deviceConnected) return 'connected'
       if (tester?.adbConnection?.ip) return 'configured'
       return 'none'
+    },
+    isRemoteSite() {
+      const h = window.location.hostname
+      return h !== 'localhost' && h !== '127.0.0.1'
     }
   },
   watch: {
@@ -793,6 +809,10 @@ export default {
     }
   },
   mounted() {
+    // On the live site the dev-server is unreachable (it runs on the
+    // developer's machine). Skip the polling/checks that would only
+    // spam "Dev server offline" errors — the banner explains why.
+    if (this.isRemoteSite) return
     this.checkDevServer()
     this.checkEmulatorStatus()
     this.loadTesters()
@@ -1962,6 +1982,16 @@ export default {
 </script>
 
 <style scoped>
+.local-only-banner {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: rgba(59,130,246,.10); border: 1px solid rgba(59,130,246,.3);
+  border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+}
+.local-only-banner .material-icons { color: #60a5fa; font-size: 1.6rem; flex-shrink: 0; }
+.local-only-banner strong { color: #93c5fd; }
+.local-only-banner p { margin: .3rem 0 0; font-size: .85rem; color: var(--text-muted); line-height: 1.55; }
+.local-only-banner code { background: rgba(0,0,0,.3); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+
 /* Test Summary */
 .test-summary {
   display: flex;

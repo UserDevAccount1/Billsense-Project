@@ -5,6 +5,18 @@
       <p>Build history, version tracking, and deployment management for BillSense APKs</p>
     </div>
 
+    <div v-if="isRemoteSite" class="local-only-banner">
+      <span class="material-icons">desktop_windows</span>
+      <div>
+        <strong>Local developer tool</strong>
+        <p>APK Management builds &amp; installs APKs via Gradle/ADB on <em>your</em> machine
+        through the dev-server (<code>localhost:3003</code>). A browser on the live site cannot
+        reach your machine, so builds are disabled here. To build: open the dashboard at
+        <code>http://localhost:3000</code> (Docker) or <code>http://localhost:3001</code> (Vite)
+        with <code>node dev-server.mjs</code> running.</p>
+      </div>
+    </div>
+
     <div class="dashboard-content">
       <!-- Top Controls -->
       <div class="apk-controls">
@@ -487,9 +499,16 @@ export default {
       if (this.pipelineError) return 'error'
       if (this.pipelineProgress >= 100) return 'success'
       return ''
+    },
+    isRemoteSite() {
+      const h = window.location.hostname
+      return h !== 'localhost' && h !== '127.0.0.1'
     }
   },
   mounted() {
+    // Live site can't reach the developer's local dev-server — skip the
+    // check that would only produce "Dev server offline" noise.
+    if (this.isRemoteSite) return
     this.checkDevServer()
   },
   beforeUnmount() {
@@ -846,6 +865,16 @@ export default {
 </script>
 
 <style scoped>
+.local-only-banner {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: rgba(59,130,246,.10); border: 1px solid rgba(59,130,246,.3);
+  border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+}
+.local-only-banner .material-icons { color: #60a5fa; font-size: 1.6rem; flex-shrink: 0; }
+.local-only-banner strong { color: #93c5fd; }
+.local-only-banner p { margin: .3rem 0 0; font-size: .85rem; color: var(--text-muted); line-height: 1.55; }
+.local-only-banner code { background: rgba(0,0,0,.3); padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+
 /* Controls */
 .apk-controls {
   display: flex;
