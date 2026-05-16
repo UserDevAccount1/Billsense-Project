@@ -68,6 +68,26 @@ function spaFallback(res) {
   });
 }
 
+// CORS: the dashboard is served from cPanel (same-origin) AND from Firebase
+// Hosting (cross-origin). Allow the known Firebase Hosting domains so the
+// Firebase-hosted SPA can reach this proxy.
+const CORS_ALLOWLIST = new Set([
+  'https://bill-sense-aec6b.web.app',
+  'https://bill-sense-aec6b.firebaseapp.com',
+  'https://billsense.dev-environment.site'
+]);
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (origin && CORS_ALLOWLIST.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+}
+
 function jsonResponse(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(obj));
@@ -153,6 +173,15 @@ function handleGeminiChat(req, res) {
 const server = http.createServer((req, res) => {
   try {
     const url = decodeURI((req.url || '/').split('?')[0]);
+
+    // CORS for API routes (Firebase-hosted SPA -> this cPanel proxy)
+    if (url.startsWith('/api/')) {
+      applyCors(req, res);
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        return res.end();
+      }
+    }
 
     // API routes
     if (url === '/api/gemini/chat')  return handleGeminiChat(req, res);

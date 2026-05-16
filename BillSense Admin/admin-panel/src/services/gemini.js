@@ -1,8 +1,15 @@
 // Shared Gemini client.
 //
-// The browser never sees a Gemini API key. Requests go to the same-origin
-// server-side proxy at /api/gemini/chat, which holds the key (read from a
-// file on the cPanel host) and forwards to Google's Generative Language API.
+// The browser never sees a Gemini API key. Requests go to the server-side
+// proxy that holds the key (read from a file on the cPanel host) and forwards
+// to Google's Generative Language API.
+//
+// The proxy only runs on the cPanel Node app. This dashboard is served from
+// TWO origins:
+//   - https://billsense.dev-environment.site      (cPanel, same-origin)
+//   - https://bill-sense-aec6b.web.app            (Firebase Hosting, cross-origin)
+// So we resolve the proxy base at runtime: relative when on cPanel,
+// absolute (to the cPanel host, CORS-allowed) when anywhere else.
 //
 // We still walk a Pro -> Flash -> Flash-Lite chain on 429/503 because Pro
 // has a tight free-tier and even paid tier can return overloaded errors.
@@ -13,13 +20,22 @@ export const MODEL_CHAIN = [
   'gemini-2.5-flash-lite'  // bulletproof fallback
 ]
 
-const PROXY = '/api/gemini/chat'
+const CPANEL_PROXY_ORIGIN = 'https://billsense.dev-environment.site'
+
+function proxyBase() {
+  if (typeof window === 'undefined') return ''
+  return window.location.hostname === 'billsense.dev-environment.site'
+    ? ''                       // same-origin on cPanel
+    : CPANEL_PROXY_ORIGIN      // cross-origin from Firebase / localhost
+}
+
+const PROXY = () => proxyBase() + '/api/gemini/chat'
 
 let cachedKeyState = null
 export async function hasGeminiKey() {
   if (cachedKeyState !== null) return cachedKeyState
   try {
-    const r = await fetch('/api/gemini/health', { signal: AbortSignal.timeout(5000) })
+    const r = await fetch(proxyBase() + '/api/gemini/health', { signal: AbortSignal.timeout(5000) })
     if (!r.ok) return (cachedKeyState = false)
     const j = await r.json()
     return (cachedKeyState = !!j.keyConfigured)
@@ -53,7 +69,7 @@ export async function chat(opts) {
     try {
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), timeoutMs)
-      const res = await fetch(PROXY, {
+      const res = await fetch(PROXY(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
