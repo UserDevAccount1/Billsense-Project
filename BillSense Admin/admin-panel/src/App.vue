@@ -30,22 +30,22 @@
             </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/scan-reports" @click="mobileMenuOpen = false">
               <span class="material-icons">qr_code_scanner</span>
               <span class="nav-text">Scan Reports</span>
-            </a>
+            </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/users" @click="mobileMenuOpen = false">
               <span class="material-icons">people</span>
               <span class="nav-text">Users</span>
-            </a>
+            </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/ml-models" @click="mobileMenuOpen = false">
               <span class="material-icons">model_training</span>
               <span class="nav-text">ML Models</span>
-            </a>
+            </router-link>
           </li>
           <li>
             <router-link to="/apk-management" @click="mobileMenuOpen = false">
@@ -72,22 +72,22 @@
             </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/cases" @click="mobileMenuOpen = false">
               <span class="material-icons">gavel</span>
               <span class="nav-text">Cases</span>
-            </a>
+            </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/voting-posts" @click="mobileMenuOpen = false">
               <span class="material-icons">how_to_vote</span>
               <span class="nav-text">Voting Posts</span>
-            </a>
+            </router-link>
           </li>
           <li>
-            <a href="#" @click="mobileMenuOpen = false">
+            <router-link to="/settings" @click="mobileMenuOpen = false">
               <span class="material-icons">settings</span>
               <span class="nav-text">Settings</span>
-            </a>
+            </router-link>
           </li>
           <li>
             <a href="#" class="logout-link" @click.prevent="onLogout">

@@ -6,16 +6,28 @@ import ApkManagement from '../views/ApkManagement.vue'
 import AppTesting from '../views/AppTesting.vue'
 import Billy from '../views/Billy.vue'
 import Login from '../views/Login.vue'
+import Users from '../views/Users.vue'
+import ScanReports from '../views/ScanReports.vue'
+import Cases from '../views/Cases.vue'
+import VotingPosts from '../views/VotingPosts.vue'
+import MLModels from '../views/MLModels.vue'
+import Settings from '../views/Settings.vue'
 import { isAuthenticated } from '../services/auth.js'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login, meta: { public: true } },
   { path: '/', name: 'Dashboard', component: Dashboard },
   { path: '/billy', name: 'Billy', component: Billy },
+  { path: '/scan-reports', name: 'ScanReports', component: ScanReports },
+  { path: '/users', name: 'Users', component: Users },
+  { path: '/ml-models', name: 'MLModels', component: MLModels },
+  { path: '/apk-management', name: 'ApkManagement', component: ApkManagement },
+  { path: '/app-testing', name: 'AppTesting', component: AppTesting },
   { path: '/connection-health', name: 'ConnectionHealth', component: ConnectionHealth },
   { path: '/gitnexus', name: 'GitNexus', component: GitNexus },
-  { path: '/apk-management', name: 'ApkManagement', component: ApkManagement },
-  { path: '/app-testing', name: 'AppTesting', component: AppTesting }
+  { path: '/cases', name: 'Cases', component: Cases },
+  { path: '/voting-posts', name: 'VotingPosts', component: VotingPosts },
+  { path: '/settings', name: 'Settings', component: Settings }
 ]
 
 const router = createRouter({
@@ -26,7 +38,6 @@ const router = createRouter({
 // Global auth gate: every non-public route requires a session.
 router.beforeEach((to) => {
   if (to.meta.public) {
-    // Already signed in? skip the login page.
     if (to.name === 'Login' && isAuthenticated()) return { path: '/' }
     return true
   }
