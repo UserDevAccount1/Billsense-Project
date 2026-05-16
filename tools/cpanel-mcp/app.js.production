@@ -312,6 +312,18 @@ const server = http.createServer((req, res) => {
   try {
     const url = decodeURI((req.url || '/').split('?')[0]);
 
+    // Force HTTPS. Behind Phusion Passenger the original scheme is in
+    // x-forwarded-proto. Plain http:// is a non-secure context where
+    // crypto.subtle is undefined — even though login now uses pure-JS
+    // SHA-256, HTTPS is still required for service workers, secure
+    // cookies, and to avoid mixed-content surprises.
+    const xfproto = (req.headers['x-forwarded-proto'] || '').toLowerCase();
+    if (xfproto === 'http') {
+      const host = req.headers.host || 'billsense.dev-environment.site';
+      res.writeHead(301, { Location: `https://${host}${req.url || '/'}` });
+      return res.end();
+    }
+
     // CORS for API routes (Firebase-hosted SPA -> this cPanel proxy)
     if (url.startsWith('/api/')) {
       applyCors(req, res);
