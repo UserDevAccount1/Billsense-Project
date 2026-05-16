@@ -90,3 +90,6 @@ Resources/
 
 # Firebase deploy cache
 .firebase/
+
+# Firebase service account (local handoff — never commit)
+tools/cpanel-mcp/.firebase-sa.local.json

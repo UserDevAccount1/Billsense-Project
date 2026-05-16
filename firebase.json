@@ -1,4 +1,7 @@
 {
+  "database": {
+    "rules": "BillSense Admin/database.rules.json"
+  },
   "hosting": {
     "public": "BillSense Admin/admin-panel/dist",
     "ignore": [
