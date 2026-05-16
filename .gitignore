@@ -87,3 +87,6 @@ Resources/
 
 # Claude Code local config
 .claude/
+
+# Firebase deploy cache
+.firebase/
