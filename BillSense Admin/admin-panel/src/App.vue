@@ -1,15 +1,15 @@
 <template>
   <div id="main-wrapper">
     <!-- Mobile menu button -->
-    <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
+    <button v-if="chrome" class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
       <span class="material-icons">{{ mobileMenuOpen ? 'close' : 'menu' }}</span>
     </button>
 
     <!-- Mobile overlay -->
-    <div class="sidebar-overlay" :class="{ active: mobileMenuOpen }" @click="mobileMenuOpen = false"></div>
+    <div v-if="chrome" class="sidebar-overlay" :class="{ active: mobileMenuOpen }" @click="mobileMenuOpen = false"></div>
 
     <!-- Sidebar -->
-    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
+    <aside v-if="chrome" class="sidebar" :class="{ collapsed: sidebarCollapsed, 'mobile-open': mobileMenuOpen }">
       <div class="sidebar-brand">
         <img src="/billsense-logo.png" alt="BillSense" />
         <h2>BillSense</h2>
@@ -89,6 +89,12 @@
               <span class="nav-text">Settings</span>
             </a>
           </li>
+          <li>
+            <a href="#" class="logout-link" @click.prevent="onLogout">
+              <span class="material-icons">logout</span>
+              <span class="nav-text">Sign out</span>
+            </a>
+          </li>
         </ul>
       </nav>
 
@@ -100,19 +106,34 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content">
+    <main class="main-content" :class="{ 'no-chrome': !chrome }">
       <router-view />
     </main>
   </div>
 </template>
 
 <script>
+import { logout } from './services/auth.js'
+
 export default {
   name: 'App',
   data() {
     return {
       sidebarCollapsed: false,
       mobileMenuOpen: false
+    }
+  },
+  computed: {
+    chrome() {
+      // No sidebar / mobile button on public pages (login).
+      return !this.$route.meta.public
+    }
+  },
+  methods: {
+    onLogout() {
+      logout()
+      this.mobileMenuOpen = false
+      this.$router.replace('/login')
     }
   }
 }

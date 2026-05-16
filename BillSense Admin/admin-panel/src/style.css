@@ -145,6 +145,20 @@ body {
   width: calc(100% - var(--sidebar-width));
 }
 
+/* Login page: no sidebar, full viewport */
+.main-content.no-chrome {
+  margin-left: 0;
+  width: 100%;
+}
+
+/* Sign-out nav link */
+.sidebar-nav a.logout-link {
+  color: #f87171;
+}
+.sidebar-nav a.logout-link:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 /* Header */
 .page-header {
   background: var(--primary);
