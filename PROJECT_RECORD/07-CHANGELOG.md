@@ -21,6 +21,18 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+28. **Thesis Validator — section navigator in Compare-edit** — editing the
+    After version stacked 7 long textareas with no quick way to reach one.
+    Added a sticky `.cmp-nav` chip bar (shown only in `cmpEditing`) with one
+    chip per section showing the title + live word count; `jumpSec(k)` sets
+    `activeSec`, smooth-scrolls the matching `.cmp-sec[data-seckey]` into view
+    and focuses its textarea; the active section gets an amber outline and
+    its chip is highlighted (first section active on entering edit mode).
+    Verified local-first: 7 chips render with word counts, clicking
+    "Chapter 2 — Design and Methodology" set it active, scrolled to
+    `chapter2_methodology` and moved focus into that textarea. Deployed
+    Firebase + Docker; cPanel on merge.
+
 27. **Thesis Validator — edit-anywhere with new/update save + selective batch
     AI generate** — (a) **Save mode:** the Document editor and a new
     **"Edit After" mode in Compare** both expose a "New version (vN) /

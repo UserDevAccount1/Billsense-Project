@@ -181,11 +181,20 @@
           </span>
         </div>
 
+        <div v-if="cmpEditing" class="cmp-nav">
+          <span class="cmp-nav-lbl"><span class="material-icons">list</span>Jump to section</span>
+          <button v-for="k in visibleCmpKeys" :key="k" class="cmp-nav-chip"
+                  :class="{ on: activeSec===k }" @click="jumpSec(k)">
+            {{ cmpTitle(k) }} <em>{{ wordCount(cmpEdit[k]) }}w</em>
+          </button>
+        </div>
+
         <div v-if="cmpA === cmpB && !cmpEditing" class="state">Pick two different versions to compare.</div>
         <div v-else-if="!visibleCmpKeys.length" class="state">No sections match this filter/search.</div>
         <div v-else class="cmp-secs">
           <div v-for="k in visibleCmpKeys" :key="k" class="cmp-sec"
-               :class="{ unchanged: !cmpEditing && !isChanged(k) }">
+               :data-seckey="k"
+               :class="{ unchanged: !cmpEditing && !isChanged(k), 'sec-active': cmpEditing && activeSec===k }">
             <div class="cmp-sec-head" @click="!cmpEditing && toggleSec(k)">
               <span class="material-icons">{{ (cmpEditing || openCmp[k]) ? 'expand_more' : 'chevron_right' }}</span>
               <strong>{{ cmpTitle(k) }}</strong>
@@ -466,7 +475,7 @@ export default {
       // editable document
       editing:false, editDoc:{}, editSaving:false, saveMode:'new',
       // editable Compare (After pane)
-      cmpEditing:false, cmpEdit:{}, cmpSaveMode:'new', cmpSaving:false,
+      cmpEditing:false, cmpEdit:{}, cmpSaveMode:'new', cmpSaving:false, activeSec:'',
       // AI defense
       aiDef:{}, aiDefQ:{}, aiBusy:false, aiBusyKey:'', aiOk:false,
       // selective batch generate
@@ -1023,8 +1032,20 @@ export default {
       this.cmpEdit=ed
       this.cmpSaveMode='new'
       this.cmpEditing=true
+      this.activeSec=Object.keys(ed)[0]||''
     },
-    cancelCmpEdit(){ this.cmpEditing=false; this.cmpEdit={} },
+    jumpSec(k){
+      this.activeSec=k
+      this.$nextTick(()=>{
+        const row=this.$el.querySelector(`.cmp-sec[data-seckey="${k}"]`)
+        if(row){
+          row.scrollIntoView({ behavior:'smooth', block:'start' })
+          const ta=row.querySelector('.cmp-edit')
+          if(ta) setTimeout(()=>ta.focus({ preventScroll:true }),350)
+        }
+      })
+    },
+    cancelCmpEdit(){ this.cmpEditing=false; this.cmpEdit={}; this.activeSec='' },
     async saveCmpEdit(){
       const base=this.cmpVerB; if(!base)return
       this.cmpSaving=true
@@ -1394,6 +1415,18 @@ export default {
   border:0; border-left:2px solid rgba(34,197,94,.4); color:var(--text); padding:.85rem 1rem;
   font-size:.88rem; line-height:1.7; resize:vertical; font-family:inherit; }
 .cmp-edit:focus { outline:none; border-left-color:#4ade80; background:rgba(0,0,0,.32); }
+.cmp-nav { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; position:sticky; top:0; z-index:6;
+  background:var(--bg-card); border:1px solid rgba(255,255,255,.08); border-radius:10px;
+  padding:.55rem .7rem; margin-bottom:.8rem; }
+.cmp-nav-lbl { display:flex; align-items:center; gap:.35rem; font-size:.74rem; font-weight:600;
+  color:var(--text-muted); margin-right:.3rem; }
+.cmp-nav-lbl .material-icons { font-size:.95rem; }
+.cmp-nav-chip { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1);
+  color:var(--text-muted); border-radius:999px; padding:.26rem .65rem; font-size:.74rem; cursor:pointer; }
+.cmp-nav-chip:hover { color:var(--text); }
+.cmp-nav-chip.on { background:rgba(255,163,26,.16); color:#ffa31a; border-color:rgba(255,163,26,.35); }
+.cmp-nav-chip em { font-style:normal; opacity:.6; font-size:.68rem; margin-left:.25rem; }
+.cmp-sec.sec-active { outline:2px solid rgba(255,163,26,.45); outline-offset:0; }
 .cmp-split { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(255,255,255,.06);
   border-top:1px solid rgba(255,255,255,.05); }
 @media (max-width:760px){ .cmp-split { grid-template-columns:1fr; } }
