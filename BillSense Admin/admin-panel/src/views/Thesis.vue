@@ -119,32 +119,70 @@
       <!-- ===== COMPARE (before / after) ===== -->
       <div v-else-if="tab==='compare'" class="cmp">
         <div class="cmp-bar">
-          <div class="cmp-pick">
-            <label class="lbl">Before</label>
+          <!-- Window 1 -->
+          <div class="cmp-win">
+            <div class="cmp-win-top">
+              <span class="cmp-win-tag">Window 1</span>
+              <div class="cmp-toggle">
+                <button :class="{ on: cmpAMode==='before' }" @click="setMode('A','before')">Before</button>
+                <button :class="{ on: cmpAMode==='after' }" @click="setMode('A','after')">After</button>
+              </div>
+            </div>
             <select v-model="cmpA" class="sel sm">
-              <option v-for="v in versions" :key="v._key" :value="v._key">
-                {{ vlabel(v) }}
-              </option>
+              <option v-for="v in versions" :key="v._key" :value="v._key">{{ vlabel(v) }}</option>
             </select>
+            <div class="cmp-win-state">{{ paneLabel('A') }}</div>
           </div>
-          <span class="material-icons cmp-arrow">arrow_forward</span>
-          <div class="cmp-pick">
-            <label class="lbl">After</label>
+
+          <span class="material-icons cmp-arrow">compare_arrows</span>
+
+          <!-- Window 2 -->
+          <div class="cmp-win">
+            <div class="cmp-win-top">
+              <span class="cmp-win-tag">Window 2</span>
+              <div class="cmp-toggle">
+                <button :class="{ on: cmpBMode==='before' }" @click="setMode('B','before')">Before</button>
+                <button :class="{ on: cmpBMode==='after' }" @click="setMode('B','after')">After</button>
+              </div>
+            </div>
             <select v-model="cmpB" class="sel sm">
-              <option v-for="v in versions" :key="v._key" :value="v._key">
-                {{ vlabel(v) }}
-              </option>
+              <option v-for="v in versions" :key="v._key" :value="v._key">{{ vlabel(v) }}</option>
             </select>
+            <div class="cmp-win-state">{{ paneLabel('B') }}</div>
           </div>
+
           <div class="cmp-legend">
+            <!-- section filter dropdown -->
+            <div class="secdd">
+              <button class="cmp-mode secdd-btn" @click="secMenuOpen=!secMenuOpen">
+                <span class="material-icons">filter_list</span>
+                {{ cmpOnlySec ? cmpTitle(cmpOnlySec) : 'All sections' }}
+                <span class="material-icons">{{ secMenuOpen ? 'arrow_drop_up' : 'arrow_drop_down' }}</span>
+              </button>
+              <div v-if="secMenuOpen" class="secdd-menu">
+                <button class="secdd-item" :class="{ on:!cmpOnlySec }" @click="pickSec('')">
+                  All sections
+                </button>
+                <button v-for="k in secMenuKeys" :key="k" class="secdd-item"
+                        :class="{ on: cmpOnlySec===k }" @click="pickSec(k)">
+                  <span>{{ cmpTitle(k) }}</span>
+                  <em v-if="!cmpEditing && isChanged(k)" class="dot">changed</em>
+                </button>
+              </div>
+            </div>
+            <button v-if="selA && selA._key" class="cmp-mode"
+                    @click="showChangesIn(cmpB||cmpA)"
+                    title="Set both windows to show what changed inside one version">
+              <span class="material-icons">difference</span> Changes in {{ vshort(selB||selA) }}
+            </button>
             <button v-if="!cmpEditing" class="cmp-mode" @click="sideBySide=!sideBySide">
               <span class="material-icons">{{ sideBySide ? 'view_agenda' : 'vertical_split' }}</span>
               {{ sideBySide ? 'Inline view' : 'Side-by-side' }}
             </button>
             <button v-if="!cmpEditing" class="cmp-mode edit" @click="startCmpEdit"
-                    :disabled="!cmpVerB || cmpA===cmpB"
-                    :title="cmpA===cmpB ? 'Pick two different versions' : 'Edit the After version here'">
-              <span class="material-icons">edit</span> Edit After ({{ vshort(cmpVerB) }})
+                    :disabled="!selB || cmpBMode!=='after'"
+                    :title="cmpBMode!=='after' ? 'Switch Window 2 to After to edit that version' : 'Edit Window 2 version here'">
+              <span class="material-icons">edit</span> Edit {{ vshort(selB) }}
             </button>
             <template v-else>
               <select v-model="cmpSaveMode" class="sel xs" :disabled="cmpSaving">
@@ -189,7 +227,14 @@
           </button>
         </div>
 
-        <div v-if="cmpA === cmpB && !cmpEditing" class="state">Pick two different versions to compare.</div>
+        <div v-if="!cmpEditing && cmpVerA && cmpVerB && cmpVerA._key===cmpVerB._key" class="state">
+          Both windows show the same content ({{ paneLabel('A') }}). Flip a Before/After
+          toggle or pick another version to see differences.
+        </div>
+        <div v-else-if="!cmpEditing && (!cmpVerA || !cmpVerB)" class="state">
+          One window has no content for this Before/After choice
+          (no earlier version exists). Pick another version or toggle to After.
+        </div>
         <div v-else-if="!visibleCmpKeys.length" class="state">No sections match this filter/search.</div>
         <div v-else class="cmp-secs">
           <div v-for="k in visibleCmpKeys" :key="k" class="cmp-sec"
@@ -207,11 +252,11 @@
             <template v-if="cmpEditing">
               <div class="cmp-split">
                 <div class="cmp-pane">
-                  <div class="cmp-pane-h del">Before — {{ vshort(cmpVerA) }} (reference)</div>
+                  <div class="cmp-pane-h del">Window 1 — {{ paneLabel('A') }} (reference)</div>
                   <div class="cmp-diff">{{ cmpContent(cmpVerA,k) || '(empty)' }}</div>
                 </div>
                 <div class="cmp-pane">
-                  <div class="cmp-pane-h add">After — editing {{ vshort(cmpVerB) }}</div>
+                  <div class="cmp-pane-h add">Window 2 — editing {{ vshort(selB) }}</div>
                   <textarea v-model="cmpEdit[k]" class="cmp-edit" rows="12"
                             :placeholder="'Write '+cmpTitle(k)+'…'"></textarea>
                 </div>
@@ -220,11 +265,11 @@
             <template v-else-if="openCmp[k]">
               <div v-if="sideBySide" class="cmp-split">
                 <div class="cmp-pane">
-                  <div class="cmp-pane-h del">Before — v{{ cmpVerA && cmpVerA.versionNumber }}</div>
+                  <div class="cmp-pane-h del">Window 1 — {{ paneLabel('A') }}</div>
                   <div class="cmp-diff" v-html="sidePane(k,'before')"></div>
                 </div>
                 <div class="cmp-pane">
-                  <div class="cmp-pane-h add">After — v{{ cmpVerB && cmpVerB.versionNumber }}</div>
+                  <div class="cmp-pane-h add">Window 2 — {{ paneLabel('B') }}</div>
                   <div class="cmp-diff" v-html="sidePane(k,'after')"></div>
                 </div>
               </div>
@@ -482,7 +527,9 @@ export default {
       gsel:{}, batchBusy:false, batchMsg:'',
       aiPanel:{ open:false, x:0, y:0, dx:0, dy:0, dragging:false },
       // compare
-      cmpA:'', cmpB:'', openCmp:{}, sideBySide:true,
+      cmpA:'', cmpB:'', cmpAMode:'after', cmpBMode:'after',
+      cmpOnlySec:'', secMenuOpen:false,
+      openCmp:{}, sideBySide:true,
       cmpQ:'', cmpFilter:'all',
       cmpFilters:[
         { v:'all', label:'All sections' },
@@ -504,8 +551,14 @@ export default {
       }))
     },
     curVersion(){ return this.versions.find(v=>v._key===this.selVer)||null },
-    cmpVerA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
-    cmpVerB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
+    // the version the user PICKED in each window
+    selA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
+    selB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
+    // the version actually DISPLAYED: 'after' = the picked version itself;
+    // 'before' = the version it was derived from (next-lower versionNumber),
+    // i.e. what that document looked like before this version's changes.
+    cmpVerA(){ return this.cmpAMode==='before' ? this.prevVer(this.selA) : this.selA },
+    cmpVerB(){ return this.cmpBMode==='before' ? this.prevVer(this.selB) : this.selB },
     nextVersionNumber(){
       return this.versions.length ? Math.max(...this.versions.map(v=>v.versionNumber||0))+1 : 1
     },
@@ -528,14 +581,27 @@ export default {
       if(this.cmpEditing){
         const keys=Object.keys(this.cmpEdit||{})
         const extra=keys.filter(k=>!FOUND_TITLE[k])
-        return [...FOUNDATION.map(f=>f.key).filter(k=>keys.includes(k)), ...extra]
+        let ks=[...FOUNDATION.map(f=>f.key).filter(k=>keys.includes(k)), ...extra]
+        if(this.cmpOnlySec) ks=ks.filter(k=>k===this.cmpOnlySec)
+        return ks
       }
       let ks=this.allCmpKeys
+      if(this.cmpOnlySec) return ks.filter(k=>k===this.cmpOnlySec)
       if(this.cmpFilter==='changed') ks=ks.filter(k=>this.isChanged(k))
       else if(this.cmpFilter==='same') ks=ks.filter(k=>!this.isChanged(k))
       else if(this.cmpFilter==='matches') ks=ks.filter(k=>this.cmpKeyHits(k)>0)
       if(this.cmpQ) ks=ks.filter(k=>this.cmpKeyHits(k)>0)
       return ks
+    },
+    // all section keys for the section dropdown (union, canonical order)
+    secMenuKeys(){
+      const set=new Set([
+        ...Object.keys((this.selA&&this.selA.sections)||{}),
+        ...Object.keys((this.selB&&this.selB.sections)||{}),
+        ...Object.keys(this.cmpEdit||{})
+      ])
+      const extra=[...set].filter(k=>!FOUND_TITLE[k])
+      return [...FOUNDATION.map(f=>f.key).filter(k=>set.has(k)), ...extra]
     },
     cmpQTotals(){
       let before=0, after=0
@@ -963,6 +1029,39 @@ export default {
     },
     cancelEdit(){ this.editing=false; this.editDoc={} },
     vshort(v){ return v ? `v${v.versionNumber}`+(v.versionLabel?` · ${v.versionLabel}`:'') : '—' },
+    // the version immediately preceding `v` (next-lower versionNumber)
+    prevVer(v){
+      if(!v)return null
+      const n=Number(v.versionNumber)||0
+      const earlier=this.versions.filter(x=>(Number(x.versionNumber)||0)<n)
+      if(!earlier.length)return null
+      return earlier.sort((a,b)=>
+        (Number(b.versionNumber)||0)-(Number(a.versionNumber)||0) ||
+        String(b.date||'').localeCompare(String(a.date||'')))[0]
+    },
+    // header text for a window: which version + before/after state
+    paneLabel(side){
+      const sel=side==='A'?this.selA:this.selB
+      const mode=side==='A'?this.cmpAMode:this.cmpBMode
+      if(!sel)return '—'
+      if(mode==='after')return `${this.vshort(sel)} · after (current)`
+      const p=this.prevVer(sel)
+      return p ? `${this.vshort(sel)} · before = ${this.vshort(p)}`
+               : `${this.vshort(sel)} · before (no earlier version)`
+    },
+    setMode(side,mode){
+      if(side==='A')this.cmpAMode=mode; else this.cmpBMode=mode
+    },
+    // jump both windows to "what changed IN this one version"
+    showChangesIn(verKey){
+      this.cmpA=verKey; this.cmpAMode='before'
+      this.cmpB=verKey; this.cmpBMode='after'
+      this.cmpFilter='changed'; this.cmpOnlySec=''
+    },
+    pickSec(k){ this.cmpOnlySec=k; this.secMenuOpen=false
+      if(!k) return
+      this.openCmp={...this.openCmp,[k]:true}
+      if(this.cmpEditing) this.activeSec=k },
     // Build a canonical sections map from an editDoc {key:text}
     sectionsFromEdit(editDoc){
       const sections={}
@@ -1370,9 +1469,30 @@ export default {
 .toast .material-icons { font-size:1.05rem; }
 
 /* Compare (before / after) */
-.cmp-bar { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+.cmp-bar { display:flex; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
 .cmp-pick { display:flex; flex-direction:column; }
-.cmp-arrow { color:var(--text-muted); margin-bottom:.4rem; }
+.cmp-arrow { color:var(--text-muted); align-self:center; margin-top:1.3rem; }
+.cmp-win { display:flex; flex-direction:column; gap:.4rem; min-width:240px;
+  background:var(--bg-card); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:.6rem .7rem; }
+.cmp-win-top { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.cmp-win-tag { font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:600; }
+.cmp-toggle { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:999px; overflow:hidden; }
+.cmp-toggle button { background:transparent; border:0; color:var(--text-muted); font-size:.72rem;
+  padding:.2rem .6rem; cursor:pointer; }
+.cmp-toggle button.on { background:#ffa31a; color:#0f172a; font-weight:600; }
+.cmp-win-state { font-size:.72rem; color:var(--text-muted); }
+.secdd { position:relative; }
+.secdd-btn { display:flex; align-items:center; gap:.3rem; }
+.secdd-menu { position:absolute; z-index:20; top:calc(100% + 4px); left:0; min-width:280px; max-height:340px;
+  overflow-y:auto; background:var(--bg-card); border:1px solid rgba(255,255,255,.14);
+  border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,.55); padding:.35rem; }
+.secdd-item { display:flex; align-items:center; justify-content:space-between; gap:.6rem; width:100%;
+  text-align:left; background:transparent; border:0; color:var(--text); font-size:.8rem;
+  padding:.45rem .6rem; border-radius:7px; cursor:pointer; }
+.secdd-item:hover { background:rgba(255,255,255,.06); }
+.secdd-item.on { background:rgba(255,163,26,.16); color:#ffa31a; }
+.secdd-item .dot { font-style:normal; font-size:.66rem; background:rgba(255,163,26,.2); color:#ffa31a;
+  padding:.05rem .4rem; border-radius:999px; }
 .cmp-legend { display:flex; align-items:center; gap:.6rem; margin-left:auto; font-size:.78rem; color:var(--text-muted); flex-wrap:wrap; }
 .lg { padding:.12rem .5rem; border-radius:999px; font-size:.72rem; }
 .lg.add { background:rgba(34,197,94,.18); color:#4ade80; }

@@ -21,6 +21,28 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+29. **Thesis Validator — two-window compare with per-window Before/After
+    toggle + section dropdown** — reworked the Compare bar per user request.
+    (a) **Two version windows** ("Window 1 / Window 2"), each with its own
+    version `<select>` and a **Before/After toggle**. "After" = the picked
+    version's own content; "Before" = its predecessor (next-lower
+    versionNumber) — so toggling one window shows what that document looked
+    like before that version's edits. `selA/selB` (picked) vs mode-resolved
+    `cmpVerA/cmpVerB` (displayed); `prevVer()` finds the predecessor;
+    `paneLabel()` renders e.g. "v6 · before = v5". (b) **Section filter
+    dropdown** — a "filter_list" button opens a categorised menu (All
+    sections + every section with a "changed" badge); `pickSec()` sets
+    `cmpOnlySec` so only that section shows, in both view and edit modes.
+    (c) **"Changes in vX"** button → `showChangesIn()` points both windows
+    at the same version (Win1=before, Win2=after, filter=changed) to answer
+    "what did I update in this one document". Edit-After now keys off
+    Window 2 when it is in After mode (edits the picked version). Empty
+    states reworded for same-content / no-predecessor cases. Verified
+    local-first: 2 windows + 2 toggles render, section dropdown filters to
+    one section w/ changed badges, Win1→Before on v1 shows "no earlier
+    version", "Changes in v6" set Win1=v6·before=v5 / Win2=v6·after,
+    1/7 changed. Deployed Firebase + Docker; cPanel on merge.
+
 28. **Thesis Validator — section navigator in Compare-edit** — editing the
     After version stacked 7 long textareas with no quick way to reach one.
     Added a sticky `.cmp-nav` chip bar (shown only in `cmpEditing`) with one
