@@ -21,6 +21,15 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+31. **Thesis Validator — dedicated branch + feature README, main updated** —
+    fast-forwarded `origin/main` with the full Thesis Validator build
+    (entries 23–30) and created branch `thesis-validator` carrying the same
+    code plus a feature-only `README.md` documenting just the Thesis
+    Validator page (tabs, two-window before/after-edit compare, section
+    dropdown/navigator, editable doc with new/update save, AI panel-defense
+    + selective batch, version labels, CANUTAB import, delete-all). Main
+    push triggers cPanel CI; Firebase + Docker re-deployed for parity.
+
 30. **Thesis Validator — Before/After = same version, pre-edit vs post-edit**
     — corrected the Compare semantics per user: Before/After is one version
     file *before I edit* vs *after I edit*, NOT two different version files.
