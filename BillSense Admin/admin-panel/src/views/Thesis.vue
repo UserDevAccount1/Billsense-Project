@@ -227,13 +227,16 @@
           </button>
         </div>
 
-        <div v-if="!cmpEditing && cmpVerA && cmpVerB && cmpVerA._key===cmpVerB._key" class="state">
-          Both windows show the same content ({{ paneLabel('A') }}). Flip a Before/After
-          toggle or pick another version to see differences.
+        <div v-if="!cmpEditing && cmpA===cmpB && cmpAMode===cmpBMode" class="state">
+          Both windows show the same view ({{ paneLabel('A') }}). To see what you
+          changed, set one window to <b>Before</b> and the other to <b>After</b>
+          (or use “Changes in {{ vshort(selB||selA) }}”).
         </div>
-        <div v-else-if="!cmpEditing && (!cmpVerA || !cmpVerB)" class="state">
-          One window has no content for this Before/After choice
-          (no earlier version exists). Pick another version or toggle to After.
+        <div v-else-if="!cmpEditing && !changedSections.length && !cmpOnlySec && !cmpQ" class="state">
+          No differences between
+          “{{ paneLabel('A') }}” and “{{ paneLabel('B') }}”.
+          {{ (selA && !wasEdited(selA) && cmpAMode==='before') || (selB && !wasEdited(selB) && cmpBMode==='before')
+             ? 'That version has not been edited yet (before = after).' : '' }}
         </div>
         <div v-else-if="!visibleCmpKeys.length" class="state">No sections match this filter/search.</div>
         <div v-else class="cmp-secs">
@@ -554,11 +557,12 @@ export default {
     // the version the user PICKED in each window
     selA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
     selB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
-    // the version actually DISPLAYED: 'after' = the picked version itself;
-    // 'before' = the version it was derived from (next-lower versionNumber),
-    // i.e. what that document looked like before this version's changes.
-    cmpVerA(){ return this.cmpAMode==='before' ? this.prevVer(this.selA) : this.selA },
-    cmpVerB(){ return this.cmpBMode==='before' ? this.prevVer(this.selB) : this.selB },
+    // the content actually DISPLAYED for a window. Before/After is the SAME
+    // version file before vs after it was edited: 'after' = its current
+    // sections; 'before' = the snapshot taken just before its last edit
+    // (version.beforeSections). If it was never edited, before === after.
+    cmpVerA(){ return this.verView(this.selA, this.cmpAMode) },
+    cmpVerB(){ return this.verView(this.selB, this.cmpBMode) },
     nextVersionNumber(){
       return this.versions.length ? Math.max(...this.versions.map(v=>v.versionNumber||0))+1 : 1
     },
@@ -968,7 +972,8 @@ export default {
       const k=`${rk}:${pi}:${ci}`
       const d=this.aiDef[k]; if(!d){ return }
       const cur=this.curVersion; if(!cur){ this.notify('No base version','err'); return }
-      const sections=JSON.parse(JSON.stringify(this.buildSkeleton(cur)))
+      const baseSections=JSON.parse(JSON.stringify(this.buildSkeleton(cur)))
+      const sections=JSON.parse(JSON.stringify(baseSections))
       const target=d.section
       const prev=sections[target]?sections[target].content:''
       const addition = d.revised
@@ -981,7 +986,8 @@ export default {
         versionNumber:this.nextVersionNumber, versionLabel:'',
         author:'AI defense apply',
         changesSummary:`Address panel comment in ${this.sectionTitle(target)}: "${(c.text||'').slice(0,80)}"`,
-        sections, editKey:target, pointKey:target, fromImport:false, importNote:''
+        sections, baseSections,   // before = pre-revision; after = with AI fix
+        editKey:target, pointKey:target, fromImport:false, importNote:''
       }
       this.notify(`Staged a new version — review ${this.sectionTitle(target)} and Save`)
     },
@@ -1029,30 +1035,38 @@ export default {
     },
     cancelEdit(){ this.editing=false; this.editDoc={} },
     vshort(v){ return v ? `v${v.versionNumber}`+(v.versionLabel?` · ${v.versionLabel}`:'') : '—' },
-    // the version immediately preceding `v` (next-lower versionNumber)
-    prevVer(v){
-      if(!v)return null
-      const n=Number(v.versionNumber)||0
-      const earlier=this.versions.filter(x=>(Number(x.versionNumber)||0)<n)
-      if(!earlier.length)return null
-      return earlier.sort((a,b)=>
-        (Number(b.versionNumber)||0)-(Number(a.versionNumber)||0) ||
-        String(b.date||'').localeCompare(String(a.date||'')))[0]
+    // Has this version a pre-edit snapshot that differs from its current
+    // content (i.e. it was actually edited at least once)?
+    wasEdited(v){
+      if(!v||!v.beforeSections)return false
+      try{
+        return JSON.stringify(v.beforeSections)!==JSON.stringify(v.sections||{})
+      }catch{ return false }
     },
-    // header text for a window: which version + before/after state
+    // Resolve a window to a {…version, sections} view. 'after' = current
+    // sections; 'before' = the snapshot from just before the last edit.
+    verView(v,mode){
+      if(!v)return null
+      if(mode==='before' && v.beforeSections)
+        return { ...v, sections:v.beforeSections, _view:'before' }
+      return { ...v, _view:mode||'after' }
+    },
+    // header text for a window: which version + before/after-edit state
     paneLabel(side){
       const sel=side==='A'?this.selA:this.selB
       const mode=side==='A'?this.cmpAMode:this.cmpBMode
       if(!sel)return '—'
-      if(mode==='after')return `${this.vshort(sel)} · after (current)`
-      const p=this.prevVer(sel)
-      return p ? `${this.vshort(sel)} · before = ${this.vshort(p)}`
-               : `${this.vshort(sel)} · before (no earlier version)`
+      if(mode==='after')
+        return `${this.vshort(sel)} · after edit${this.wasEdited(sel)?'':' (not edited yet)'}`
+      return this.wasEdited(sel)
+        ? `${this.vshort(sel)} · before edit`
+        : `${this.vshort(sel)} · before (not edited yet — same as after)`
     },
     setMode(side,mode){
       if(side==='A')this.cmpAMode=mode; else this.cmpBMode=mode
     },
-    // jump both windows to "what changed IN this one version"
+    // jump both windows to ONE version: before-edit vs after-edit, so you
+    // see exactly what you changed when you last edited that document
     showChangesIn(verKey){
       this.cmpA=verKey; this.cmpAMode='before'
       this.cmpB=verKey; this.cmpBMode='after'
@@ -1074,6 +1088,12 @@ export default {
     // Persist sections either as a NEW version or by UPDATING an existing
     // version in place. Returns the version _key written.
     async commitSections({ sections, mode, baseVer, summary }){
+      // snapshot taken just BEFORE this edit so the version carries its own
+      // before/after-edit diff (the live record from the versions array, so
+      // an in-place update captures the truly-current pre-edit content)
+      const live = baseVer && this.versions.find(v=>v._key===baseVer._key)
+      const beforeSnap = JSON.parse(JSON.stringify(
+        (live && live.sections) || (baseVer && baseVer.sections) || {}))
       if(mode==='update' && baseVer && baseVer._key){
         const rec={
           versionNumber:baseVer.versionNumber,
@@ -1081,6 +1101,7 @@ export default {
           author:baseVer.author||'editor',
           changesSummary:summary||baseVer.changesSummary||`Updated ${this.vshort(baseVer)}`,
           date:new Date().toISOString(),
+          beforeSections:beforeSnap,
           sections
         }
         if(baseVer.source)rec.source=baseVer.source
@@ -1093,7 +1114,9 @@ export default {
       const rec={ versionNumber:num, versionLabel:'',
         author:(baseVer&&baseVer.author)||'editor',
         changesSummary:summary||`Inline edit → v${num}`,
-        date:new Date().toISOString(), sections }
+        date:new Date().toISOString(),
+        beforeSections:beforeSnap,   // = the version you edited FROM
+        sections }
       const key=`v${num}_${Date.now()}`
       await patch('thesis_versions',{[key]:rec})
       this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
@@ -1292,6 +1315,7 @@ export default {
       this.importMsg=''
       this.nv={ versionNumber:this.nextVersionNumber, versionLabel:'',
         author:'', changesSummary:'', sections,
+        baseSections:JSON.parse(JSON.stringify(sections)),  // pre-edit snapshot
         editKey:Object.keys(sections)[0], pointKey:'', fromImport:false, importNote:'' }
     },
     async saveNewVersion(){
@@ -1306,6 +1330,7 @@ export default {
         author:this.nv.author.trim(),
         changesSummary:String(this.nv.changesSummary||'').trim()||`Revision v${num}`,
         date:new Date().toISOString(), sections:this.nv.sections }
+      if(this.nv.baseSections)rec.beforeSections=this.nv.baseSections
       if(this.nv.source)rec.source=this.nv.source
       const key=`v${num}_${Date.now()}`
       try{

@@ -21,6 +21,24 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+30. **Thesis Validator — Before/After = same version, pre-edit vs post-edit**
+    — corrected the Compare semantics per user: Before/After is one version
+    file *before I edit* vs *after I edit*, NOT two different version files.
+    Every version now carries a `beforeSections` snapshot captured the moment
+    before its last edit: `commitSections` sets it on both in-place Update
+    (snapshot = the live pre-update sections) and Save-as-new (snapshot = the
+    version it was edited from); `saveNewVersion`/`applyDefense`/
+    `startNewVersion` stage `baseSections` so modal/AI edits also get it;
+    fresh imports get none (before == after = "not edited yet"). `verView()`
+    swaps a window's sections to `beforeSections` when its toggle = Before;
+    `wasEdited()` + reworded `paneLabel()` ("v6 · before edit" / "after
+    edit") and empty states make the not-edited case explicit. "Changes in
+    vX" now shows that one version's own edit diff. Verified local-first:
+    edited v6 in place → "Changes in v6" → Win1 "v6 · before edit" vs Win2
+    "v6 · after edit", marker shown as added, 1/7 changed; un-edited v1
+    correctly reports before == after. Deployed Firebase + Docker; cPanel
+    on merge.
+
 29. **Thesis Validator — two-window compare with per-window Before/After
     toggle + section dropdown** — reworked the Compare bar per user request.
     (a) **Two version windows** ("Window 1 / Window 2"), each with its own
