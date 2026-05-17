@@ -30,6 +30,11 @@
           <span class="material-icons">{{ fImporting ? 'hourglass_top' : 'upload_file' }}</span>
           {{ fImporting ? 'Importing…' : 'Import CANUTAB PDF' }}
         </button>
+        <button class="delv" @click="confirmDel=true" :disabled="!versions.length||delBusy"
+                title="Delete ALL thesis versions from the database">
+          <span class="material-icons">{{ delBusy ? 'hourglass_top' : 'delete_forever' }}</span>
+          {{ delBusy ? 'Deleting…' : 'Delete all versions' }}
+        </button>
       </div>
 
       <div v-if="loading" class="state">Loading thesis data…</div>
@@ -222,7 +227,12 @@
 
                 <!-- AI defense card -->
                 <div v-if="defKey(req._key,pi,ci)" class="ai-def">
-                  <div class="ai-def-h"><span class="material-icons">shield</span> AI Defense — counters &amp; enhancement plan</div>
+                  <div class="ai-def-h">
+                    <span class="material-icons">shield</span> AI Defense — counters &amp; enhancement plan
+                    <span v-if="aiDef[defKey(req._key,pi,ci)].savedTs" class="saved-tag">
+                      <span class="material-icons">cloud_done</span> saved
+                    </span>
+                  </div>
                   <div class="ai-def-row"><b>Defense</b><p>{{ aiDef[defKey(req._key,pi,ci)].defense }}</p></div>
                   <div class="ai-def-row"><b>Enhance app</b><p>{{ aiDef[defKey(req._key,pi,ci)].app }}</p></div>
                   <div class="ai-def-row"><b>Enhance document</b><p>{{ aiDef[defKey(req._key,pi,ci)].doc }}</p></div>
@@ -243,10 +253,12 @@
                 </div>
               </div>
               <div class="cmt-act">
-                <button class="ico gen" :disabled="aiBusy" @click="defend(req,pi,ci,c)"
-                        :title="aiOk ? 'Generate AI defense' : 'AI not configured'">
-                  <span class="material-icons">{{ aiBusy && aiBusyKey===(req._key+':'+pi+':'+ci) ? 'hourglass_top' : 'auto_awesome' }}</span>
-                  Generate
+                <button class="ico gen" :class="{ regen: defKey(req._key,pi,ci) }"
+                        :disabled="aiBusy"
+                        @click="onGenerateClick(req,pi,ci,c)"
+                        :title="!aiOk ? 'AI not configured' : (defKey(req._key,pi,ci) ? 'Already generated & saved — click to regenerate' : 'Generate AI defense')">
+                  <span class="material-icons">{{ aiBusy && aiBusyKey===(req._key+':'+pi+':'+ci) ? 'hourglass_top' : (defKey(req._key,pi,ci) ? 'refresh' : 'auto_awesome') }}</span>
+                  {{ defKey(req._key,pi,ci) ? 'Regenerate' : 'Generate' }}
                 </button>
                 <select :value="c.status||'pending'" class="sel xs" :class="cClass(c.status)"
                         @change="setCommentStatus(req,pi,ci,$event.target.value)">
@@ -254,6 +266,31 @@
                 </select>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete-all confirm modal -->
+    <div v-if="confirmDel" class="modal" @click.self="confirmDel=false">
+      <div class="modal-box sm">
+        <div class="modal-head">
+          <strong>Delete ALL thesis versions?</strong>
+          <button class="ico" @click="confirmDel=false"><span class="material-icons">close</span></button>
+        </div>
+        <div class="nv-body">
+          <p class="warn-txt">
+            This permanently removes <b>all {{ versions.length }} version(s)</b>
+            from <code>thesis_versions</code> in the database. Panel comments and
+            their saved AI defenses are kept. This cannot be undone — afterwards
+            you can import a fresh thesis or create a new version.
+          </p>
+          <div class="del-actions">
+            <button class="edit-btn ghost" @click="confirmDel=false" :disabled="delBusy">Cancel</button>
+            <button class="del-go" @click="deleteAllVersions" :disabled="delBusy">
+              <span class="material-icons">{{ delBusy ? 'hourglass_top' : 'delete_forever' }}</span>
+              {{ delBusy ? 'Deleting…' : 'Yes, delete all' }}
+            </button>
           </div>
         </div>
       </div>
@@ -320,7 +357,7 @@
 </template>
 
 <script>
-import { value, patch } from '../services/db.js'
+import { value, patch, remove } from '../services/db.js'
 import { chat, hasGeminiKey } from '../services/gemini.js'
 import foundationDoc from '../assets/canutab-thesis-foundation.json'
 
@@ -361,7 +398,9 @@ export default {
         { v:'matches', label:'Search matches' }
       ],
       // foundation import
-      fImporting:false
+      fImporting:false,
+      // delete-all versions
+      confirmDel:false, delBusy:false
     }
   },
   computed: {
@@ -453,6 +492,8 @@ export default {
         ? Object.entries(tv).map(([_key,v])=>({_key,...v})).sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0)) : []
       this.panelRequests = pr&&typeof pr==='object'
         ? Object.entries(pr).map(([_key,r])=>({_key,...r})) : []
+      // hydrate previously-generated AI defenses persisted on each comment
+      this.hydrateDefenses()
       if(this.versions.length){
         this.selVer=this.versions[this.versions.length-1]._key
         const s=this.curVersion&&this.curVersion.sections
@@ -584,6 +625,46 @@ export default {
       for(const [k,rx] of map) if(rx.test(t)) return k
       return 'chapter1_introduction'
     },
+    // Restore AI defenses that were generated in a previous session and
+    // persisted onto each comment in thesis_panel_requests.
+    hydrateDefenses(){
+      const def={}, defQ={}
+      for(const req of this.panelRequests){
+        ;(req.panelists||[]).forEach((p,pi)=>{
+          ;(p.comments||[]).forEach((c,ci)=>{
+            if(c&&c.aiDefense&&typeof c.aiDefense==='object'){
+              const k=`${req._key}:${pi}:${ci}`
+              def[k]=c.aiDefense
+              defQ[k]=`[${this.sectionTitle(c.aiDefense.section)}] ${c.text}`
+            }
+          })
+        })
+      }
+      this.aiDef=def; this.aiDefQ=defQ
+    },
+    // Generate-once: a click only ever runs when the user explicitly asks.
+    // If a defense already exists it is shown from the DB; clicking again is
+    // an explicit "Regenerate".
+    onGenerateClick(req,pi,ci,c){
+      if(this.aiBusy) return
+      if(this.defKey(req._key,pi,ci)){
+        if(!window.confirm('A defense is already generated and saved for this comment. Regenerate and overwrite it?')) return
+      }
+      this.defend(req,pi,ci,c)
+    },
+    async deleteAllVersions(){
+      if(this.delBusy) return
+      this.delBusy=true
+      try{
+        await remove('thesis_versions')
+        this.versions=[]; this.selVer=''; this.selSec=''
+        this.cmpA=''; this.cmpB=''; this.editing=false; this.editDoc={}
+        this.confirmDel=false
+        this.tab='doc'
+        this.notify('All thesis versions deleted — import or create a new one')
+      }catch(e){ this.notify('Delete failed: '+e.message,'err') }
+      finally{ this.delBusy=false }
+    },
     async defend(req,pi,ci,c){
       if(!this.aiOk){ this.notify('AI not configured','err'); return }
       const k=`${req._key}:${pi}:${ci}`
@@ -611,11 +692,24 @@ export default {
           generationConfig:{ temperature:0.55, maxOutputTokens:900 }
         })
         const parsed=this.parseAI(r.text, fallbackSection)
+        parsed.savedTs=Date.now()
         this.aiDef={...this.aiDef,[k]:parsed}
         this.aiDefQ={...this.aiDefQ,[k]:`[${this.sectionTitle(parsed.section)}] ${c.text}`}
         if(this.aiPanel.x===0&&this.aiPanel.y===0){ this.aiPanel.x=Math.max(20,window.innerWidth-380); this.aiPanel.y=90 }
         this.aiPanel.open=true
-        this.notify('AI defense generated')
+        // persist the generated defense onto the comment so it survives
+        // reloads and is shared from the database (generate-once)
+        try{
+          const panelists=JSON.parse(JSON.stringify(req.panelists||[]))
+          if(panelists[pi]&&panelists[pi].comments&&panelists[pi].comments[ci]){
+            panelists[pi].comments[ci].aiDefense=parsed
+            await patch(`thesis_panel_requests/${req._key}`,{panelists})
+            req.panelists=panelists
+            this.notify('AI defense generated & saved')
+          } else {
+            this.notify('AI defense generated (not persisted: comment shape)')
+          }
+        }catch(e){ this.notify('Generated, but save failed: '+e.message,'err') }
       }catch(e){ this.notify('AI: '+e.message,'err') } finally { this.aiBusy=false; this.aiBusyKey='' }
     },
     parseAI(text,fallbackSection){
@@ -842,6 +936,7 @@ export default {
 .tabbar button .material-icons { font-size:1.05rem; } .tabbar button em { font-style:normal; opacity:.7; font-size:.78rem; }
 .tabbar .newv { margin-left:auto; background:rgba(34,197,94,.12); color:#4ade80; border-color:rgba(34,197,94,.3); }
 .tabbar .impv { background:rgba(99,102,241,.14); color:#a5b4fc; border-color:rgba(99,102,241,.3); }
+.tabbar .delv { background:rgba(248,113,113,.12); color:#fca5a5; border-color:rgba(248,113,113,.3); }
 .tabbar button:disabled { opacity:.5; cursor:not-allowed; }
 .state { color:var(--text-muted); padding:2rem; text-align:center; }
 .state.err { color:#f87171; display:flex; gap:.5rem; justify-content:center; }
@@ -923,8 +1018,17 @@ export default {
 .ico:hover:not(:disabled){ color:#a5b4fc; } .ico:disabled{ opacity:.4; cursor:not-allowed; }
 .ico .material-icons { font-size:1rem; }
 .ico.gen { display:flex; align-items:center; gap:.25rem; font-size:.74rem; background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:6px; padding:.28rem .55rem; }
+.ico.gen.regen { background:rgba(148,163,184,.12); color:#cbd5e1; border-color:rgba(148,163,184,.3); }
+.saved-tag { display:inline-flex; align-items:center; gap:.2rem; margin-left:auto; font-size:.68rem; background:rgba(34,197,94,.16); color:#4ade80; padding:.08rem .45rem; border-radius:999px; font-weight:600; }
+.saved-tag .material-icons { font-size:.8rem; }
+.warn-txt { font-size:.85rem; line-height:1.55; color:var(--text); margin:0 0 .3rem; }
+.warn-txt code { background:rgba(255,255,255,.08); padding:0 .3rem; border-radius:4px; font-size:.82rem; }
+.del-actions { display:flex; gap:.6rem; justify-content:flex-end; margin-top:.4rem; }
+.del-go { display:flex; align-items:center; gap:.35rem; background:#ef4444; color:#fff; border:0; border-radius:8px; padding:.55rem .9rem; font-weight:600; font-size:.85rem; cursor:pointer; }
+.del-go:disabled { opacity:.5; cursor:not-allowed; } .del-go .material-icons { font-size:1rem; }
 .modal { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; z-index:999; padding:2rem; }
 .modal-box { background:var(--bg-card); border:1px solid rgba(255,255,255,.1); border-radius:12px; width:100%; max-width:640px; max-height:85vh; display:flex; flex-direction:column; }
+.modal-box.sm { max-width:460px; }
 .modal-head { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,.08); }
 .nv-body { padding:1rem 1.25rem; overflow-y:auto; display:flex; flex-direction:column; gap:.6rem; }
 .nv-text { width:100%; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:.6rem; color:inherit; font-size:.84rem; line-height:1.5; box-sizing:border-box; resize:vertical; }

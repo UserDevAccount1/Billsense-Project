@@ -21,6 +21,23 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+24. **Thesis Validator — delete-all-versions + persistent generate-once AI
+    defense** — (a) **Delete all versions:** red "Delete all versions" tab
+    button → confirm modal → `remove('thesis_versions')` wipes the RTDB path
+    so a fresh thesis can be imported; panel comments/defenses are kept;
+    afterwards Import creates a clean v1 (verified: delete → 0 versions →
+    re-import → "v1 — CANUTAB"). (b) **Generate-once AI defense, persisted:**
+    a generated defense is now written onto the comment
+    (`thesis_panel_requests/<req>/panelists[pi].comments[ci].aiDefense`) via
+    the SA proxy, so it survives reloads and is shared from the DB.
+    `hydrateDefenses()` restores them on mount. The button shows "Generate"
+    once, then "Regenerate" (greyed) — it never auto-generates and a
+    `window.confirm` guards accidental overwrite; a green "saved" badge marks
+    DB-persisted defenses. Verified local-first: generate → saved badge +
+    "AI defense generated & saved" → reload → defense hydrated from DB,
+    button = Regenerate. Versions (import/edit/new) already persist via
+    `patch('thesis_versions',…)`. Deployed Firebase + Docker; cPanel on merge.
+
 23. **Thesis Validator — foundation + cross-version search + editable doc +
     AI panel-defense + CANUTAB PDF import** — laid the canonical thesis
     "foundation" then built the four requested features. (a) **Foundation:**
