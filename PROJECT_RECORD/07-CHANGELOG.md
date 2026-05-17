@@ -21,6 +21,39 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+23. **Thesis Validator — foundation + cross-version search + editable doc +
+    AI panel-defense + CANUTAB PDF import** — laid the canonical thesis
+    "foundation" then built the four requested features. (a) **Foundation:**
+    `FOUNDATION` constant = canonical ordered section skeleton (Ch1
+    Background/Theoretical/Problem, Ch2 Methodology, Ch3 Results, Ch4
+    Conclusions, References); all views render/edit/compare in this order;
+    new/edited/imported versions are built on it (legacy seed keys preserved
+    as "extra" sections so old v1–v3 still render). (b) **Compare
+    search/filter:** search box that counts + highlights a query across BOTH
+    before & after panes (`<mark>` injected per diff token), per-section hit
+    badges, cross-version totals, filter chips (All / Changed / Unchanged /
+    Search matches). (c) **Editable Document tab:** "Edit document" → every
+    section becomes a textarea on the canonical skeleton → "Save as vN"
+    writes a new immutable version and jumps to Compare(prev→new) filtered to
+    changed sections. (d) **AI panel-defense agent:** "Generate" on a panel
+    comment calls Gemini with a labelled `[DEFENSE]/[APP]/[DOC]/[SECTION]/
+    [REVISED]` template (delimiter format — JSON broke on prose quotes/
+    newlines; robust parser w/ JSON + tolerant fallbacks); renders Defense /
+    Enhance-app / Enhance-document / target-section / proposed revised
+    excerpt; "Apply to section" stages a new version with the revision
+    injected into the AI-identified section and points the modal there;
+    collects into the draggable reference panel. (e) **PDF import:** cleaned
+    `CANUTAB-THESIS (2) (1).pdf` (Turnitin-wrapped, 20,043 words) via
+    `Resources/Documents/clean_thesis.mjs` (strips Turnitin chrome/match
+    indices, reflows, dedups, segments) → `canutab-thesis-foundation.json`
+    bundled at `src/assets/`; "Import CANUTAB PDF" button writes it as a new
+    version through the SA proxy. Verified local-first (Vite :3001 +
+    Claude_Preview): search 294/294 hits + 180 marks/pane, edit→18 textareas
+    + "Save as v4", AI defense parsed clean w/ distinct fields + Apply opened
+    v5 modal pointed at the right section, CANUTAB imported as v4 (4,534-word
+    Ch1, 7 canonical sections, persisted to RTDB), Compare detects 17/18
+    changed. Deployed: Firebase web.app, cPanel CI (push), Docker --no-cache.
+
 1. **Docs + CI/CD + audit PDF** (`759bfe0`) — README, docs/, deep-analysis PDF,
    `.github/workflows/deploy-admin-cpanel.yml` (FTPS deploy).
 2. **cPanel MCP** — built a custom one, then replaced with ringo380/cpanel-mcp

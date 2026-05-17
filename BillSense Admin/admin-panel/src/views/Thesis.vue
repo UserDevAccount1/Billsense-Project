@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <h1>Thesis Validator</h1>
-      <p>Version control · full-document view · validation scoring · panel comment management</p>
+      <p>Version control · editable document · before/after compare · AI panel-defense · validation scoring</p>
     </div>
 
     <div class="content">
@@ -11,7 +11,7 @@
           <span class="material-icons">description</span> Versions <em>{{ versions.length }}</em>
         </button>
         <button :class="{ on: tab==='full' }" @click="tab='full'">
-          <span class="material-icons">menu_book</span> Full Document
+          <span class="material-icons">menu_book</span> Document {{ editing ? '(editing)' : '' }}
         </button>
         <button :class="{ on: tab==='compare' }" @click="tab='compare'">
           <span class="material-icons">compare_arrows</span> Compare (Before / After)
@@ -24,6 +24,11 @@
         </button>
         <button class="newv" @click="startNewVersion" :disabled="!curVersion" title="Create a new version from the current one">
           <span class="material-icons">add</span> New Version
+        </button>
+        <button class="impv" @click="importFoundation" :disabled="fImporting"
+                title="Import CANUTAB-THESIS (2) (1).pdf as a new version">
+          <span class="material-icons">{{ fImporting ? 'hourglass_top' : 'upload_file' }}</span>
+          {{ fImporting ? 'Importing…' : 'Import CANUTAB PDF' }}
         </button>
       </div>
 
@@ -61,19 +66,39 @@
         </div>
       </div>
 
-      <!-- ===== FULL DOCUMENT (template viewer) ===== -->
+      <!-- ===== DOCUMENT (view + edit) ===== -->
       <div v-else-if="tab==='full'" class="full">
         <div class="full-bar">
-          <select v-model="selVer" class="sel sm">
+          <select v-model="selVer" class="sel sm" :disabled="editing">
             <option v-for="v in versions" :key="v._key" :value="v._key">v{{ v.versionNumber }} — {{ v.author }}</option>
           </select>
           <input v-model="q" class="sel sm" placeholder="search whole document…" />
+          <button v-if="!editing" class="edit-btn" @click="startEdit" :disabled="!curVersion">
+            <span class="material-icons">edit</span> Edit document
+          </button>
+          <template v-else>
+            <button class="edit-btn save" @click="saveEditAsVersion" :disabled="editSaving">
+              <span class="material-icons">{{ editSaving ? 'hourglass_top' : 'save' }}</span>
+              {{ editSaving ? 'Saving…' : 'Save as v'+nextVersionNumber }}
+            </button>
+            <button class="edit-btn ghost" @click="cancelEdit" :disabled="editSaving">
+              <span class="material-icons">close</span> Cancel
+            </button>
+            <span class="edit-note">Editing a working copy — “Save as new version” writes a new immutable version, then shows the diff.</span>
+          </template>
         </div>
-        <div class="paper">
-          <h2 class="paper-title">BillSense — Thesis Document (v{{ curVersion && curVersion.versionNumber }})</h2>
+        <div class="paper" :class="{ editing }">
+          <h2 class="paper-title">BillSense — Thesis Document
+            (v{{ editing ? nextVersionNumber : (curVersion && curVersion.versionNumber) }}{{ editing ? ' draft' : '' }})</h2>
           <div v-for="key in orderedSectionKeys" :key="key" class="paper-sec">
-            <h3>{{ sectionTitle(key) }}</h3>
-            <div class="paper-body" v-html="highlight(stripHtml(curVersion.sections[key].content))"></div>
+            <h3>
+              {{ sectionTitle(key) }}
+              <small v-if="editing" class="wc">{{ wordCount(editDoc[key]) }} words</small>
+            </h3>
+            <textarea v-if="editing" v-model="editDoc[key]" class="paper-edit" rows="10"
+                      :placeholder="'Write '+sectionTitle(key)+'…'"></textarea>
+            <div v-else class="paper-body"
+                 v-html="highlight(stripHtml(curVersion.sections[key] && curVersion.sections[key].content))"></div>
           </div>
         </div>
       </div>
@@ -108,12 +133,31 @@
           </div>
         </div>
 
+        <!-- search + filter controls across BOTH versions -->
+        <div class="cmp-tools">
+          <div class="cmp-search">
+            <span class="material-icons">search</span>
+            <input v-model="cmpQ" placeholder="Search context across BOTH versions (before & after)…" />
+            <button v-if="cmpQ" class="ico" @click="cmpQ=''"><span class="material-icons">close</span></button>
+          </div>
+          <div class="cmp-filters">
+            <button v-for="f in cmpFilters" :key="f.v" class="fchip" :class="{ on: cmpFilter===f.v }"
+                    @click="cmpFilter=f.v">{{ f.label }}</button>
+          </div>
+          <span class="cmp-qsum" v-if="cmpQ">
+            “{{ cmpQ }}” — {{ cmpQTotals.before }} in before · {{ cmpQTotals.after }} in after ·
+            {{ cmpQSectionHits }} section(s)
+          </span>
+        </div>
+
         <div v-if="cmpA === cmpB" class="state">Pick two different versions to compare.</div>
+        <div v-else-if="!visibleCmpKeys.length" class="state">No sections match this filter/search.</div>
         <div v-else class="cmp-secs">
-          <div v-for="k in allCmpKeys" :key="k" class="cmp-sec" :class="{ unchanged: !isChanged(k) }">
+          <div v-for="k in visibleCmpKeys" :key="k" class="cmp-sec" :class="{ unchanged: !isChanged(k) }">
             <div class="cmp-sec-head" @click="toggleSec(k)">
               <span class="material-icons">{{ openCmp[k] ? 'expand_more' : 'chevron_right' }}</span>
               <strong>{{ cmpTitle(k) }}</strong>
+              <span v-if="cmpQ && cmpKeyHits(k)" class="cmp-hit">{{ cmpKeyHits(k) }} match</span>
               <span class="cmp-tag" :class="isChanged(k) ? 'chg' : 'same'">
                 {{ isChanged(k) ? changeStat(k) : 'no change' }}
               </span>
@@ -175,14 +219,34 @@
               <span class="sec-tag">{{ sectionTitle(c.section) }}</span>
               <div class="cmt-main">
                 <span class="cmt-text">{{ c.text }}</span>
-                <div v-if="aiKey(req._key,pi,ci)" class="ai-sug">
-                  <span class="material-icons">auto_awesome</span>
-                  <span>{{ aiSug[aiKey(req._key,pi,ci)] }}</span>
+
+                <!-- AI defense card -->
+                <div v-if="defKey(req._key,pi,ci)" class="ai-def">
+                  <div class="ai-def-h"><span class="material-icons">shield</span> AI Defense — counters &amp; enhancement plan</div>
+                  <div class="ai-def-row"><b>Defense</b><p>{{ aiDef[defKey(req._key,pi,ci)].defense }}</p></div>
+                  <div class="ai-def-row"><b>Enhance app</b><p>{{ aiDef[defKey(req._key,pi,ci)].app }}</p></div>
+                  <div class="ai-def-row"><b>Enhance document</b><p>{{ aiDef[defKey(req._key,pi,ci)].doc }}</p></div>
+                  <div class="ai-def-row">
+                    <b>Apply to</b>
+                    <p>
+                      <span class="sec-point">{{ sectionTitle(aiDef[defKey(req._key,pi,ci)].section) }}</span>
+                      <button class="apply-btn"
+                              @click="applyDefense(req._key,pi,ci,c)">
+                        <span class="material-icons">auto_fix_high</span> Apply to section
+                      </button>
+                    </p>
+                  </div>
+                  <details v-if="aiDef[defKey(req._key,pi,ci)].revised">
+                    <summary>Proposed revised excerpt</summary>
+                    <div class="ai-def-rev">{{ aiDef[defKey(req._key,pi,ci)].revised }}</div>
+                  </details>
                 </div>
               </div>
               <div class="cmt-act">
-                <button class="ico" :disabled="aiBusy" @click="suggest(req,pi,ci,c)" title="AI: how to address">
-                  <span class="material-icons">auto_awesome</span>
+                <button class="ico gen" :disabled="aiBusy" @click="defend(req,pi,ci,c)"
+                        :title="aiOk ? 'Generate AI defense' : 'AI not configured'">
+                  <span class="material-icons">{{ aiBusy && aiBusyKey===(req._key+':'+pi+':'+ci) ? 'hourglass_top' : 'auto_awesome' }}</span>
+                  Generate
                 </button>
                 <select :value="c.status||'pending'" class="sel xs" :class="cClass(c.status)"
                         @change="setCommentStatus(req,pi,ci,$event.target.value)">
@@ -213,7 +277,7 @@
             <p class="hint">{{ importMsg || importHint }}</p>
           </div>
 
-          <label class="lbl">Edit section</label>
+          <label class="lbl">Edit section <span v-if="nv.pointKey" class="point">→ AI points here</span></label>
           <select v-model="nv.editKey" class="sel">
             <option v-for="k in Object.keys(nv.sections)" :key="k" :value="k">{{ sectionTitle(k) }}</option>
           </select>
@@ -227,22 +291,22 @@
     </div>
 
     <!-- Draggable AI Reference panel -->
-    <button v-if="!aiPanel.open && aiSugList.length" class="ai-fab" @click="aiPanel.open=true"
+    <button v-if="!aiPanel.open && aiRefList.length" class="ai-fab" @click="aiPanel.open=true"
             title="Open AI guidance reference">
       <span class="material-icons">auto_awesome</span>
-      <em>{{ aiSugList.length }}</em>
+      <em>{{ aiRefList.length }}</em>
     </button>
     <div v-if="aiPanel.open" class="ai-ref" :style="{ left: aiPanel.x+'px', top: aiPanel.y+'px' }">
       <div class="ai-ref-head" @mousedown="startDrag">
         <span class="material-icons">auto_awesome</span>
-        <strong>AI Suggestion Reference</strong>
+        <strong>AI Defense Reference</strong>
         <button class="ico" @click="aiPanel.open=false"><span class="material-icons">close</span></button>
       </div>
       <div class="ai-ref-body">
-        <div v-if="!aiSugList.length" class="ai-ref-empty">
-          Click the ✦ on a panel comment to get AI guidance — it collects here.
+        <div v-if="!aiRefList.length" class="ai-ref-empty">
+          Click “Generate” on a panel comment to get an AI defense — it collects here.
         </div>
-        <div v-for="(it,i) in aiSugList" :key="i" class="ai-ref-item">
+        <div v-for="(it,i) in aiRefList" :key="i" class="ai-ref-item">
           <div class="ai-ref-q">{{ it.q }}</div>
           <div class="ai-ref-a">{{ it.a }}</div>
         </div>
@@ -258,6 +322,21 @@
 <script>
 import { value, patch } from '../services/db.js'
 import { chat, hasGeminiKey } from '../services/gemini.js'
+import foundationDoc from '../assets/canutab-thesis-foundation.json'
+
+// Canonical thesis skeleton — the "foundation". Every version is rendered,
+// edited and compared in this order; new/edited versions are built on it so
+// the document structure is stable across versions and imports.
+const FOUNDATION = [
+  { key:'chapter1_introduction', title:'Chapter 1 — Background of the Study' },
+  { key:'chapter1_theoretical',  title:'Chapter 1 — Theoretical Framework' },
+  { key:'chapter1_problem',      title:'Chapter 1 — Statement of the Problem' },
+  { key:'chapter2_methodology',  title:'Chapter 2 — Design and Methodology' },
+  { key:'chapter3_results',      title:'Chapter 3 — Presentation, Analysis, and Interpretation of Data' },
+  { key:'chapter4_conclusion',   title:'Chapter 4 — Conclusions and Recommendations' },
+  { key:'references',            title:'References' }
+]
+const FOUND_TITLE = Object.fromEntries(FOUNDATION.map(s => [s.key, s.title]))
 
 export default {
   name: 'Thesis',
@@ -267,28 +346,69 @@ export default {
       versions:[], panelRequests:[], selVer:'', selSec:'', q:'',
       nv:null, nvSaving:false, importMsg:'',
       importHint:'JSON with a "sections" object replaces all sections · .txt/.md/.html fills the selected section below',
-      aiSug:{}, aiSugQ:{}, aiBusy:false, aiOk:false,
+      // editable document
+      editing:false, editDoc:{}, editSaving:false,
+      // AI defense
+      aiDef:{}, aiDefQ:{}, aiBusy:false, aiBusyKey:'', aiOk:false,
       aiPanel:{ open:false, x:0, y:0, dx:0, dy:0, dragging:false },
-      cmpA:'', cmpB:'', openCmp:{}, sideBySide:true
+      // compare
+      cmpA:'', cmpB:'', openCmp:{}, sideBySide:true,
+      cmpQ:'', cmpFilter:'all',
+      cmpFilters:[
+        { v:'all', label:'All sections' },
+        { v:'changed', label:'Changed only' },
+        { v:'same', label:'Unchanged' },
+        { v:'matches', label:'Search matches' }
+      ],
+      // foundation import
+      fImporting:false
     }
   },
   computed: {
-    aiSugList(){
-      return Object.keys(this.aiSug).map(k=>({ q:this.aiSugQ[k]||'(panel comment)', a:this.aiSug[k] }))
+    aiRefList(){
+      return Object.keys(this.aiDef).map(k=>({
+        q:this.aiDefQ[k]||'(panel comment)',
+        a:`Defense: ${this.aiDef[k].defense}\nApply to: ${this.sectionTitle(this.aiDef[k].section)}`
+      }))
     },
     curVersion(){ return this.versions.find(v=>v._key===this.selVer)||null },
     cmpVerA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
     cmpVerB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
+    nextVersionNumber(){
+      return this.versions.length ? Math.max(...this.versions.map(v=>v.versionNumber||0))+1 : 1
+    },
+    // canonical-ordered keys: FOUNDATION first, then any extra keys present
+    orderedSectionKeys(){
+      const s=this.curVersion&&this.curVersion.sections; if(!s)return []
+      const extra=Object.keys(s).filter(k=>!FOUND_TITLE[k])
+      return [...FOUNDATION.map(f=>f.key).filter(k=>s[k]!==undefined||true), ...extra]
+        .filter((k,i,a)=>a.indexOf(k)===i)
+    },
     allCmpKeys(){
       const a=this.cmpVerA&&this.cmpVerA.sections||{}
       const b=this.cmpVerB&&this.cmpVerB.sections||{}
-      return [...new Set([...Object.keys(a),...Object.keys(b)])]
+      const present=new Set([...Object.keys(a),...Object.keys(b)])
+      const extra=[...present].filter(k=>!FOUND_TITLE[k])
+      return [...FOUNDATION.map(f=>f.key).filter(k=>present.has(k)), ...extra]
     },
     changedSections(){ return this.allCmpKeys.filter(k=>this.isChanged(k)) },
-    orderedSectionKeys(){
-      const s=this.curVersion&&this.curVersion.sections; if(!s)return []
-      return Object.keys(s)
+    visibleCmpKeys(){
+      let ks=this.allCmpKeys
+      if(this.cmpFilter==='changed') ks=ks.filter(k=>this.isChanged(k))
+      else if(this.cmpFilter==='same') ks=ks.filter(k=>!this.isChanged(k))
+      else if(this.cmpFilter==='matches') ks=ks.filter(k=>this.cmpKeyHits(k)>0)
+      if(this.cmpQ) ks=ks.filter(k=>this.cmpKeyHits(k)>0)
+      return ks
     },
+    cmpQTotals(){
+      let before=0, after=0
+      for(const k of this.allCmpKeys){
+        before+=this.countIn(this.cmpContent(this.cmpVerA,k))
+        after +=this.countIn(this.cmpContent(this.cmpVerB,k))
+      }
+      return { before, after }
+    },
+    cmpQSectionHits(){ return this.allCmpKeys.filter(k=>this.cmpKeyHits(k)>0).length },
     shownSections(){
       if(!this.q) return this.orderedSectionKeys
       return this.orderedSectionKeys.filter(k=>this.matchCount(k)>0)
@@ -302,13 +422,13 @@ export default {
       const out=[]
       const empty=secs.filter(([,s])=>this.wordCount(s.content)<20)
       out.push({key:'nonempty',label:'All sections have content',pass:empty.length===0,warn:false,
-        detail:empty.length?`${empty.length} thin/empty: ${empty.map(([k])=>this.sectionTitle(k)).join(', ')}`:'All 12 sections populated'})
+        detail:empty.length?`${empty.length} thin/empty: ${empty.map(([k])=>this.sectionTitle(k)).join(', ')}`:`All ${secs.length} sections populated`})
       const refs=v.sections['references']
-      out.push({key:'refs',label:'References present',pass:!!refs&&this.wordCount(refs.content)>50,warn:false,
+      out.push({key:'refs',label:'References present',pass:!!refs&&this.wordCount(refs.content)>50,warn:!!refs&&this.wordCount(refs.content)<=50,
         detail:refs?`${this.wordCount(refs.content)} words in References`:'No references section'})
       const ch1=secs.filter(([k])=>k.startsWith('chapter1')).length
       const ch2=secs.filter(([k])=>k.startsWith('chapter2')).length
-      out.push({key:'struct',label:'Chapter structure',pass:ch1>=3&&ch2>=5,warn:ch1<3||ch2<5,
+      out.push({key:'struct',label:'Chapter structure',pass:ch1>=3&&ch2>=1,warn:ch1<3||ch2<1,
         detail:`Chapter 1: ${ch1} sections · Chapter 2: ${ch2} sections`})
       const ph=secs.filter(([,s])=>/lorem ipsum|TODO|TBD|placeholder|xxxx/i.test(this.stripHtml(s.content)))
       out.push({key:'placeholder',label:'No placeholder text',pass:ph.length===0,warn:false,
@@ -336,8 +456,7 @@ export default {
       if(this.versions.length){
         this.selVer=this.versions[this.versions.length-1]._key
         const s=this.curVersion&&this.curVersion.sections
-        if(s)this.selSec=Object.keys(s)[0]
-        // Compare defaults: oldest (before) vs newest (after)
+        if(s)this.selSec=this.orderedSectionKeys[0]
         this.cmpA=this.versions[0]._key
         this.cmpB=this.versions[this.versions.length-1]._key
       }
@@ -349,6 +468,10 @@ export default {
     window.removeEventListener('mouseup',this.stopDrag)
   },
   methods: {
+    // ---- helpers ----
+    rx(s){ return new RegExp(String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi') },
+    countIn(text){ if(!this.cmpQ||!text)return 0; const m=String(text).match(this.rx(this.cmpQ)); return m?m.length:0 },
+    cmpKeyHits(k){ return this.countIn(this.cmpContent(this.cmpVerA,k))+this.countIn(this.cmpContent(this.cmpVerB,k)) },
     // ---- Compare (before / after) ----
     cmpContent(ver,k){
       const s=ver&&ver.sections&&ver.sections[k]
@@ -357,7 +480,7 @@ export default {
     cmpTitle(k){
       const va=this.cmpVerA&&this.cmpVerA.sections&&this.cmpVerA.sections[k]
       const vb=this.cmpVerB&&this.cmpVerB.sections&&this.cmpVerB.sections[k]
-      return (vb&&vb.title)||(va&&va.title)||
+      return FOUND_TITLE[k]||(vb&&vb.title)||(va&&va.title)||
         String(k||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).replace(/Chapter(\d)/,'Chapter $1 —')
     },
     isChanged(k){ return this.cmpContent(this.cmpVerA,k)!==this.cmpContent(this.cmpVerB,k) },
@@ -368,12 +491,10 @@ export default {
       return d===0?'edited':(d>0?`+${d} words`:`${d} words`)
     },
     toggleSec(k){ this.openCmp={...this.openCmp,[k]:!this.openCmp[k]} },
-    // Word-level LCS diff -> tokens [{t:'eq|add|del', s}]
     diffWords(before,after){
       const A=before.split(/(\s+)/), B=after.split(/(\s+)/)
       const n=A.length, m=B.length
-      // LCS table (cap to keep it cheap on huge sections)
-      if(n*m>1500000){ // too big for full LCS; coarse fallback
+      if(n*m>1500000){
         return before===after?[{t:'eq',s:after}]:[{t:'del',s:before},{t:'add',s:after}]
       }
       const dp=Array.from({length:n+1},()=>new Int32Array(m+1))
@@ -390,29 +511,34 @@ export default {
       while(j<m){ push('add',B[j]); j++ }
       return out
     },
+    // escape + apply the compare search highlight inside one diff token
+    mark(s){
+      let e=this.esc(s)
+      if(this.cmpQ) e=e.replace(this.rx(this.cmpQ),'<mark>$&</mark>')
+      return e
+    },
     diffHtml(k){
       const a=this.cmpContent(this.cmpVerA,k), b=this.cmpContent(this.cmpVerB,k)
-      if(a===b) return '<span class="d-eq">'+this.esc(b||'(empty)')+'</span>'
+      if(a===b) return '<span class="d-eq">'+this.mark(b||'(empty)')+'</span>'
       return this.diffWords(a,b).map(tok=>{
-        const s=this.esc(tok.s)
+        const s=this.mark(tok.s)
         if(tok.t==='add') return '<span class="d-add">'+s+'</span>'
         if(tok.t==='del') return '<span class="d-del">'+s+'</span>'
         return '<span class="d-eq">'+s+'</span>'
       }).join('')
     },
-    // One pane of the side-by-side view. 'before' shows eq + del (removed
-    // highlighted); 'after' shows eq + add (added highlighted).
     sidePane(k,which){
       const a=this.cmpContent(this.cmpVerA,k), b=this.cmpContent(this.cmpVerB,k)
-      if(a===b) return '<span class="d-eq">'+this.esc((which==='before'?a:b)||'(empty)')+'</span>'
+      if(a===b) return '<span class="d-eq">'+this.mark((which==='before'?a:b)||'(empty)')+'</span>'
       const keep = which==='before' ? 'del' : 'add'
       return this.diffWords(a,b).map(tok=>{
-        if(tok.t==='eq') return '<span class="d-eq">'+this.esc(tok.s)+'</span>'
-        if(tok.t===keep) return '<span class="d-'+keep+'">'+this.esc(tok.s)+'</span>'
-        return ''   // hide the other side's changes in this pane
+        if(tok.t==='eq') return '<span class="d-eq">'+this.mark(tok.s)+'</span>'
+        if(tok.t===keep) return '<span class="d-'+keep+'">'+this.mark(tok.s)+'</span>'
+        return ''
       }).join('')
     },
     sectionTitle(k){
+      if(FOUND_TITLE[k])return FOUND_TITLE[k]
       const t=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[k]&&this.curVersion.sections[k].title
       if(t)return t
       return String(k||'—').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).replace(/Chapter(\d)/,'Chapter $1 —')
@@ -422,19 +548,18 @@ export default {
     highlight(text){
       const e=this.esc(text)
       if(!this.q)return e
-      const rx=new RegExp('('+this.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi')
-      return e.replace(rx,'<mark>$1</mark>')
+      return e.replace(this.rx(this.q),'<mark>$&</mark>')
     },
     matchCount(k){
       const s=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[k]
       if(!s||!this.q)return 0
-      const m=this.stripHtml(s.content).match(new RegExp(this.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'))
+      const m=this.stripHtml(s.content).match(this.rx(this.q))
       return m?m.length:0
     },
     wordCount(s){ return this.stripHtml(s).split(/\s+/).filter(Boolean).length },
     reqStats(req){ const a=(req.panelists||[]).flatMap(p=>p.comments||[]); const d=a.filter(c=>['resolved','rejected'].includes(c.status)).length; return `${d}/${a.length} resolved` },
     cClass(s){ const v=(s||'pending').toLowerCase(); return v==='resolved'?'ok':v==='addressed'?'warn':v==='rejected'?'mut':'pend' },
-    notify(m,t='ok'){ this.toast={msg:m,type:t}; setTimeout(()=>this.toast=null,3000) },
+    notify(m,t='ok'){ this.toast={msg:m,type:t}; setTimeout(()=>this.toast=null,3500) },
     async setReqStatus(req,status){ try{ await patch(`thesis_panel_requests/${req._key}`,{status}); req.status=status; this.notify(`Request → ${status}`) }catch(e){ this.notify(e.message,'err') } },
     async setCommentStatus(req,pi,ci,status){
       const panelists=JSON.parse(JSON.stringify(req.panelists||[]))
@@ -442,23 +567,122 @@ export default {
       panelists[pi].comments[ci].status=status
       try{ await patch(`thesis_panel_requests/${req._key}`,{panelists}); req.panelists=panelists; this.notify(`Comment → ${status}`) }catch(e){ this.notify(e.message,'err') }
     },
-    aiKey(rk,pi,ci){ const k=`${rk}:${pi}:${ci}`; return this.aiSug[k]?k:'' },
-    async suggest(req,pi,ci,c){
+
+    // ---- AI panel-defense agent ----
+    defKey(rk,pi,ci){ const k=`${rk}:${pi}:${ci}`; return this.aiDef[k]?k:'' },
+    bestSectionFor(text){
+      // map a comment to the most relevant canonical section by keyword overlap
+      const t=(text||'').toLowerCase()
+      const map=[
+        ['chapter1_problem', /problem|objective|research question|sop|aim|purpose/],
+        ['chapter1_theoretical', /theor|framework|literature|related|concept/],
+        ['chapter2_methodology', /method|design|sample|participant|data gathering|instrument|interview|ethic|locale|population|qualitative|quantitative/],
+        ['chapter3_results', /result|finding|analysis|interpretation|theme|data presentation|accuracy|feature/],
+        ['chapter4_conclusion', /conclusion|recommend|future work|implication|summary/],
+        ['references', /reference|citation|source|bibliograph/]
+      ]
+      for(const [k,rx] of map) if(rx.test(t)) return k
+      return 'chapter1_introduction'
+    },
+    async defend(req,pi,ci,c){
       if(!this.aiOk){ this.notify('AI not configured','err'); return }
-      this.aiBusy=true
       const k=`${req._key}:${pi}:${ci}`
+      this.aiBusy=true; this.aiBusyKey=k
+      const fallbackSection=c.section&&FOUND_TITLE[c.section]?c.section:this.bestSectionFor(c.text)
+      const curSecText=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[fallbackSection]
+        ? this.stripHtml(this.curVersion.sections[fallbackSection].content).slice(0,1800) : ''
       try{
         const r=await chat({
-          systemPrompt:'You advise a thesis student how to address a defense-panel comment. Reply in 2 sentences max, concrete and actionable.',
-          userMessage:`Section: ${this.sectionTitle(c.section)}\nPanel comment: "${c.text}"\nHow should the student address this?`,
-          generationConfig:{temperature:0.5,maxOutputTokens:200}
+          systemPrompt:
+            'You are a thesis-defense advisor for "BillSense", a Philippine peso counterfeit-detection '+
+            'mobile app (Android + YOLOv8 ML API). A defense panelist raised a comment/question. '+
+            'Reply using EXACTLY this labelled plain-text template and nothing else (no markdown, '+
+            'no JSON). Each label on its own line, content below it:\n'+
+            '[DEFENSE]\n(2-3 sentences directly countering/defending the thesis against the comment)\n'+
+            '[APP]\n(1-2 sentences: a concrete mobile-app enhancement that answers the panelist)\n'+
+            '[DOC]\n(1-2 sentences: what to add/clarify in the thesis document)\n'+
+            '[SECTION]\n(exactly one of: chapter1_introduction, chapter1_theoretical, chapter1_problem, '+
+            'chapter2_methodology, chapter3_results, chapter4_conclusion, references)\n'+
+            '[REVISED]\n(a 60-160 word improved passage to insert into that section addressing the comment)\n'+
+            '[END]',
+          userMessage:
+            `Panel comment: "${c.text}"\nTagged section: ${this.sectionTitle(fallbackSection)}\n`+
+            `Current text of that section (excerpt):\n${curSecText||'(empty)'}\n\nReply with the template now.`,
+          generationConfig:{ temperature:0.55, maxOutputTokens:900 }
         })
-        this.aiSug={...this.aiSug,[k]:r.text.trim()}
-        this.aiSugQ={...this.aiSugQ,[k]:`[${this.sectionTitle(c.section)}] ${c.text}`}
+        const parsed=this.parseAI(r.text, fallbackSection)
+        this.aiDef={...this.aiDef,[k]:parsed}
+        this.aiDefQ={...this.aiDefQ,[k]:`[${this.sectionTitle(parsed.section)}] ${c.text}`}
         if(this.aiPanel.x===0&&this.aiPanel.y===0){ this.aiPanel.x=Math.max(20,window.innerWidth-380); this.aiPanel.y=90 }
         this.aiPanel.open=true
-      }catch(e){ this.notify('AI: '+e.message,'err') } finally { this.aiBusy=false }
+        this.notify('AI defense generated')
+      }catch(e){ this.notify('AI: '+e.message,'err') } finally { this.aiBusy=false; this.aiBusyKey='' }
     },
+    parseAI(text,fallbackSection){
+      let t=String(text||'').trim()
+        .replace(/```[a-z]*/gi,'')
+        .replace(/[“”„‟]/g,'"').replace(/[‘’‚‛]/g,"'")
+
+      // Primary: labelled [DEFENSE]/[APP]/[DOC]/[SECTION]/[REVISED] template
+      const block=(label,next)=>{
+        const re=new RegExp('\\[\\s*'+label+'\\s*\\]\\s*([\\s\\S]*?)\\s*(?=\\['+
+          '\\s*(?:'+next.join('|')+')\\s*\\]|$)','i')
+        const m=t.match(re); return m?m[1].trim():''
+      }
+      const d=block('DEFENSE',['APP','DOC','SECTION','REVISED','END'])
+      const a=block('APP',['DOC','SECTION','REVISED','END'])
+      const o=block('DOC',['SECTION','REVISED','END'])
+      let sc=block('SECTION',['REVISED','END']).replace(/[^a-z0-9_]/gi,'').toLowerCase()
+      const rv=block('REVISED',['END'])
+      if(d||a||o||rv){
+        const sec=FOUND_TITLE[sc]?sc:fallbackSection
+        return { defense:d||'—', app:a||'—', doc:o||'—', section:sec, revised:rv||'' }
+      }
+
+      // Fallback: JSON (in case the model ignored the template)
+      let j=null
+      try{ j=JSON.parse(t) }catch{
+        const m=t.match(/\{[\s\S]*\}/)
+        if(m){ try{ j=JSON.parse(m[0]) }catch{
+          try{ j=JSON.parse(m[0].replace(/,\s*([}\]])/g,'$1')) }catch{} } }
+      }
+      if(j&&typeof j==='object'){
+        const sec=FOUND_TITLE[j.section]?j.section:fallbackSection
+        return {
+          defense:String(j.defense||'').trim()||'—',
+          app:String(j.app||'').trim()||'—',
+          doc:String(j.doc||'').trim()||'—',
+          section:sec, revised:String(j.revised||'').trim()
+        }
+      }
+      // Last resort: whole reply is the defense
+      return { defense:t.replace(/\[[A-Z]+\]/g,' ').trim().slice(0,700)||'—',
+        app:'—', doc:'—', section:fallbackSection, revised:'' }
+    },
+    // Apply the AI's revised excerpt into a staged New Version, pointing at
+    // the exact section the AI identified.
+    applyDefense(rk,pi,ci,c){
+      const k=`${rk}:${pi}:${ci}`
+      const d=this.aiDef[k]; if(!d){ return }
+      const cur=this.curVersion; if(!cur){ this.notify('No base version','err'); return }
+      const sections=JSON.parse(JSON.stringify(this.buildSkeleton(cur)))
+      const target=d.section
+      const prev=sections[target]?sections[target].content:''
+      const addition = d.revised
+        ? `\n\n[Revision addressing panel comment — ${this.sectionTitle(target)}]\n${d.revised}`
+        : `\n\n[Note from AI defense] ${d.doc}`
+      sections[target]={ title:FOUND_TITLE[target]||this.sectionTitle(target),
+        content:(prev?prev:'')+addition }
+      this.importMsg=''
+      this.nv={
+        versionNumber:this.nextVersionNumber,
+        author:'AI defense apply',
+        changesSummary:`Address panel comment in ${this.sectionTitle(target)}: "${(c.text||'').slice(0,80)}"`,
+        sections, editKey:target, pointKey:target
+      }
+      this.notify(`Staged a new version — review ${this.sectionTitle(target)} and Save`)
+    },
+
     // ---- Draggable AI reference ----
     startDrag(e){
       this.aiPanel.dragging=true
@@ -477,6 +701,57 @@ export default {
       window.removeEventListener('mousemove',this.onDrag)
       window.removeEventListener('mouseup',this.stopDrag)
     },
+
+    // ---- Editable full document ----
+    buildSkeleton(ver){
+      // a full canonical section map seeded from `ver`
+      const src=(ver&&ver.sections)||{}
+      const out={}
+      for(const f of FOUNDATION){
+        const s=src[f.key]
+        out[f.key]={ title:f.title, content:(s&&s.content)||'' }
+      }
+      // keep any non-canonical extra sections too
+      for(const [k,v] of Object.entries(src))
+        if(!FOUND_TITLE[k]) out[k]={ title:(v&&v.title)||this.sectionTitle(k), content:(v&&v.content)||'' }
+      return out
+    },
+    startEdit(){
+      const cur=this.curVersion; if(!cur)return
+      const sk=this.buildSkeleton(cur)
+      const ed={}
+      for(const k of Object.keys(sk)) ed[k]=this.stripHtml(sk[k].content)
+      this.editDoc=ed
+      this.editing=true
+    },
+    cancelEdit(){ this.editing=false; this.editDoc={} },
+    async saveEditAsVersion(){
+      if(!this.curVersion)return
+      this.editSaving=true
+      const prevKey=this.selVer
+      const num=this.nextVersionNumber
+      const sections={}
+      for(const f of FOUNDATION)
+        sections[f.key]={ title:f.title, content:(this.editDoc[f.key]||'').trim() }
+      for(const k of Object.keys(this.editDoc))
+        if(!FOUND_TITLE[k]) sections[k]={ title:this.sectionTitle(k), content:(this.editDoc[k]||'').trim() }
+      const rec={ versionNumber:num, author:(this.curVersion.author||'editor'),
+        changesSummary:`Inline document edit (v${num})`,
+        date:new Date().toISOString(), sections }
+      const key=`v${num}_${Date.now()}`
+      try{
+        await patch('thesis_versions',{[key]:rec})
+        this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
+        this.editing=false; this.editDoc={}
+        this.selVer=key
+        // jump straight to the before/after diff: prev → new
+        this.cmpA=prevKey; this.cmpB=key
+        this.cmpFilter='changed'
+        this.tab='compare'
+        this.notify(`Saved v${num} — showing changed sections`)
+      }catch(e){ this.notify(e.message,'err') } finally { this.editSaving=false }
+    },
+
     // ---- Create version from file ----
     importFile(e){
       const f=e.target.files&&e.target.files[0]; if(!f||!this.nv)return
@@ -498,7 +773,6 @@ export default {
               this.importMsg=`Imported ${Object.keys(out).length} section(s) from JSON.`
             } else throw new Error('JSON has no "sections"')
           } else {
-            // .txt/.md/.html -> strip tags, drop into the selected section
             const clean=this.stripHtml(txt)
             this.nv.sections[this.nv.editKey].content=clean
             this.importMsg=`Loaded ${clean.split(/\s+/).filter(Boolean).length} words into "${this.sectionTitle(this.nv.editKey)}".`
@@ -509,11 +783,10 @@ export default {
     },
     startNewVersion(){
       const cur=this.curVersion; if(!cur)return
-      const nextN=Math.max(...this.versions.map(v=>v.versionNumber||0))+1
-      const sections=JSON.parse(JSON.stringify(cur.sections||{}))
+      const sections=this.buildSkeleton(cur)
       this.importMsg=''
-      this.nv={ versionNumber:nextN, author:'', changesSummary:'',
-        sections, editKey:Object.keys(sections)[0] }
+      this.nv={ versionNumber:this.nextVersionNumber, author:'', changesSummary:'',
+        sections, editKey:Object.keys(sections)[0], pointKey:'' }
     },
     async saveNewVersion(){
       if(!this.nv)return
@@ -529,6 +802,33 @@ export default {
         this.selVer=key; this.nv=null
         this.notify(`Version v${rec.versionNumber} saved`)
       }catch(e){ this.notify(e.message,'err') } finally { this.nvSaving=false }
+    },
+
+    // ---- Import the CANUTAB PDF foundation as a new version ----
+    async importFoundation(){
+      if(this.fImporting)return
+      this.fImporting=true
+      try{
+        const num=this.nextVersionNumber
+        const sections={}
+        for(const f of FOUNDATION){
+          const s=foundationDoc.sections&&foundationDoc.sections[f.key]
+          sections[f.key]={ title:f.title, content:(s&&s.content)||'' }
+        }
+        const rec={
+          versionNumber:num,
+          author:foundationDoc.author||'CANUTAB et al. (imported PDF)',
+          changesSummary:foundationDoc.changesSummary||'Imported from CANUTAB-THESIS (2) (1).pdf',
+          date:new Date().toISOString(),
+          source:foundationDoc.source||'CANUTAB-THESIS (2) (1).pdf',
+          sections
+        }
+        const key=`v${num}_${Date.now()}`
+        await patch('thesis_versions',{[key]:rec})
+        this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
+        this.selVer=key
+        this.notify(`Imported CANUTAB thesis as v${num} (${this.wordCount(Object.values(sections).map(s=>s.content).join(' '))} words)`)
+      }catch(e){ this.notify('Import failed: '+e.message,'err') } finally { this.fImporting=false }
     }
   }
 }
@@ -541,12 +841,15 @@ export default {
 .tabbar button.on { background:rgba(255,163,26,.15); color:#ffa31a; border-color:rgba(255,163,26,.3); }
 .tabbar button .material-icons { font-size:1.05rem; } .tabbar button em { font-style:normal; opacity:.7; font-size:.78rem; }
 .tabbar .newv { margin-left:auto; background:rgba(34,197,94,.12); color:#4ade80; border-color:rgba(34,197,94,.3); }
+.tabbar .impv { background:rgba(99,102,241,.14); color:#a5b4fc; border-color:rgba(99,102,241,.3); }
+.tabbar button:disabled { opacity:.5; cursor:not-allowed; }
 .state { color:var(--text-muted); padding:2rem; text-align:center; }
 .state.err { color:#f87171; display:flex; gap:.5rem; justify-content:center; }
 .doc { display:grid; grid-template-columns:300px 1fr; gap:1.25rem; }
 @media (max-width:860px){ .doc { grid-template-columns:1fr; } }
 .doc-side { background:var(--bg-card); border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:1rem; align-self:start; }
 .lbl { display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:.7rem 0 .35rem; }
+.point { color:#a5b4fc; text-transform:none; letter-spacing:0; font-size:.7rem; }
 .sel { width:100%; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:.5rem .6rem; color:inherit; font-size:.85rem; cursor:pointer; box-sizing:border-box; }
 .sel.sm { width:auto; cursor:auto; } .sel.xs { width:auto; font-size:.74rem; padding:.2rem .4rem; }
 .sel.xs.ok{color:#4ade80;} .sel.xs.warn{color:#fbbf24;} .sel.xs.mut{color:#94a3b8;} .sel.xs.pend{color:#f87171;}
@@ -561,13 +864,21 @@ export default {
 .seccontent, .paper-body { white-space:pre-wrap; font-size:.9rem; line-height:1.7; color:var(--text); }
 .seccontent { max-height:65vh; overflow-y:auto; background:rgba(0,0,0,.18); padding:1rem 1.25rem; border-radius:8px; }
 .seccontent :deep(mark), .paper-body :deep(mark) { background:#ffa31a; color:#0f172a; border-radius:2px; }
-.full-bar { display:flex; gap:.6rem; margin-bottom:1rem; }
+.full-bar { display:flex; gap:.6rem; margin-bottom:1rem; align-items:center; flex-wrap:wrap; }
+.edit-btn { display:flex; align-items:center; gap:.35rem; background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:8px; padding:.45rem .8rem; font-size:.82rem; cursor:pointer; }
+.edit-btn.save { background:#ffa31a; color:#0f172a; border-color:#ffa31a; }
+.edit-btn.ghost { background:transparent; color:var(--text-muted); }
+.edit-btn:disabled { opacity:.5; cursor:not-allowed; } .edit-btn .material-icons { font-size:1rem; }
+.edit-note { font-size:.74rem; color:var(--text-muted); flex:1 1 100%; }
 .paper { background:#f8f7f3; color:#1a1a1a; border-radius:10px; padding:2.5rem 3rem; max-height:72vh; overflow-y:auto; }
+.paper.editing { background:#fffdf7; }
 .paper-title { text-align:center; font-size:1.3rem; margin:0 0 1.5rem; color:#111; }
 .paper-sec { margin-bottom:1.75rem; }
-.paper-sec h3 { color:#1a2a4a; border-bottom:2px solid #1a2a4a; padding-bottom:.25rem; }
+.paper-sec h3 { color:#1a2a4a; border-bottom:2px solid #1a2a4a; padding-bottom:.25rem; display:flex; justify-content:space-between; align-items:baseline; }
+.paper-sec h3 .wc { font-size:.7rem; color:#6b7280; font-weight:400; }
 .paper .paper-body { color:#222; }
 .paper :deep(mark) { background:#ffe08a; }
+.paper-edit { width:100%; box-sizing:border-box; background:#fff; color:#1a1a1a; border:1px solid #cbd5e1; border-radius:6px; padding:.7rem .9rem; font-size:.86rem; line-height:1.6; resize:vertical; font-family:inherit; }
 .valid { display:flex; flex-direction:column; gap:1rem; }
 .scorebox { text-align:center; padding:1.5rem; border-radius:12px; border:1px solid; }
 .scorebox.ok { background:rgba(34,197,94,.1); border-color:rgba(34,197,94,.3); }
@@ -593,14 +904,25 @@ export default {
 .nocmt { font-size:.8rem; color:var(--text-muted); padding-left:1.4rem; }
 .cmt { display:flex; align-items:flex-start; gap:.6rem; padding:.5rem 0; border-bottom:1px solid rgba(255,255,255,.03); }
 .sec-tag { font-size:.66rem; background:rgba(99,102,241,.18); color:#a5b4fc; padding:.12rem .45rem; border-radius:999px; white-space:nowrap; flex-shrink:0; }
-.cmt-main { flex:1; }
+.cmt-main { flex:1; min-width:0; }
 .cmt-text { font-size:.85rem; line-height:1.45; }
-.ai-sug { display:flex; gap:.4rem; margin-top:.4rem; font-size:.8rem; color:#a5b4fc; background:rgba(99,102,241,.1); padding:.45rem .6rem; border-radius:6px; }
-.ai-sug .material-icons { font-size:.9rem; flex-shrink:0; }
-.cmt-act { display:flex; align-items:center; gap:.35rem; flex-shrink:0; }
+.ai-def { margin-top:.55rem; background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.25); border-radius:8px; padding:.7rem .8rem; }
+.ai-def-h { display:flex; align-items:center; gap:.4rem; font-size:.8rem; font-weight:600; color:#a5b4fc; margin-bottom:.5rem; }
+.ai-def-h .material-icons { font-size:.95rem; }
+.ai-def-row { display:flex; gap:.6rem; font-size:.8rem; margin:.3rem 0; }
+.ai-def-row b { flex:0 0 110px; color:var(--text-muted); font-weight:600; }
+.ai-def-row p { margin:0; line-height:1.45; color:var(--text); flex:1; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+.sec-point { background:rgba(255,163,26,.18); color:#ffa31a; padding:.1rem .5rem; border-radius:999px; font-size:.74rem; }
+.apply-btn { display:inline-flex; align-items:center; gap:.3rem; background:#ffa31a; color:#0f172a; border:0; border-radius:6px; padding:.25rem .6rem; font-size:.74rem; font-weight:600; cursor:pointer; }
+.apply-btn .material-icons { font-size:.9rem; }
+.ai-def details { margin-top:.45rem; font-size:.78rem; color:var(--text-muted); }
+.ai-def summary { cursor:pointer; }
+.ai-def-rev { margin-top:.4rem; background:rgba(0,0,0,.2); border-radius:6px; padding:.55rem .7rem; line-height:1.5; color:var(--text); white-space:pre-wrap; }
+.cmt-act { display:flex; align-items:center; gap:.35rem; flex-shrink:0; flex-direction:column; }
 .ico { background:none; border:0; color:var(--text-muted); cursor:pointer; padding:.2rem; }
 .ico:hover:not(:disabled){ color:#a5b4fc; } .ico:disabled{ opacity:.4; cursor:not-allowed; }
 .ico .material-icons { font-size:1rem; }
+.ico.gen { display:flex; align-items:center; gap:.25rem; font-size:.74rem; background:rgba(99,102,241,.15); color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:6px; padding:.28rem .55rem; }
 .modal { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; z-index:999; padding:2rem; }
 .modal-box { background:var(--bg-card); border:1px solid rgba(255,255,255,.1); border-radius:12px; width:100%; max-width:640px; max-height:85vh; display:flex; flex-direction:column; }
 .modal-head { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,.08); }
@@ -614,7 +936,7 @@ export default {
 .toast .material-icons { font-size:1.05rem; }
 
 /* Compare (before / after) */
-.cmp-bar { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+.cmp-bar { display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
 .cmp-pick { display:flex; flex-direction:column; }
 .cmp-arrow { color:var(--text-muted); margin-bottom:.4rem; }
 .cmp-legend { display:flex; align-items:center; gap:.6rem; margin-left:auto; font-size:.78rem; color:var(--text-muted); flex-wrap:wrap; }
@@ -622,12 +944,21 @@ export default {
 .lg.add { background:rgba(34,197,94,.18); color:#4ade80; }
 .lg.del { background:rgba(248,113,113,.18); color:#f87171; }
 .cmp-sum { margin-left:.4rem; }
+.cmp-tools { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:1.1rem; padding:.6rem .75rem; background:var(--bg-card); border:1px solid rgba(255,255,255,.06); border-radius:10px; }
+.cmp-search { display:flex; align-items:center; gap:.4rem; flex:1 1 280px; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:.35rem .55rem; }
+.cmp-search .material-icons { font-size:1rem; color:var(--text-muted); }
+.cmp-search input { flex:1; background:none; border:0; color:inherit; font-size:.85rem; outline:none; }
+.cmp-filters { display:flex; gap:.35rem; flex-wrap:wrap; }
+.fchip { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text-muted); border-radius:999px; padding:.25rem .7rem; font-size:.74rem; cursor:pointer; }
+.fchip.on { background:rgba(255,163,26,.15); color:#ffa31a; border-color:rgba(255,163,26,.3); }
+.cmp-qsum { font-size:.76rem; color:var(--text-muted); flex:1 1 100%; }
 .cmp-secs { display:flex; flex-direction:column; gap:.6rem; }
 .cmp-sec { background:var(--bg-card); border:1px solid rgba(255,255,255,.06); border-radius:10px; }
-.cmp-sec.unchanged { opacity:.55; }
+.cmp-sec.unchanged { opacity:.6; }
 .cmp-sec-head { display:flex; align-items:center; gap:.5rem; padding:.7rem 1rem; cursor:pointer; }
 .cmp-sec-head .material-icons { font-size:1.1rem; color:var(--text-muted); }
 .cmp-sec-head strong { flex:1; font-size:.9rem; }
+.cmp-hit { font-size:.68rem; background:#ffa31a; color:#0f172a; padding:.1rem .45rem; border-radius:999px; }
 .cmp-tag { font-size:.7rem; padding:.12rem .5rem; border-radius:999px; }
 .cmp-tag.chg { background:rgba(255,163,26,.18); color:#ffa31a; }
 .cmp-tag.same { background:rgba(148,163,184,.15); color:#94a3b8; }
@@ -636,6 +967,7 @@ export default {
 .cmp-diff :deep(.d-add) { background:rgba(34,197,94,.22); color:#86efac; }
 .cmp-diff :deep(.d-del) { background:rgba(248,113,113,.22); color:#fca5a5; text-decoration:line-through; }
 .cmp-diff :deep(.d-eq) { color:var(--text); }
+.cmp-diff :deep(mark) { background:#ffa31a; color:#0f172a; border-radius:2px; }
 .cmp-mode { display:flex; align-items:center; gap:.35rem; background:rgba(99,102,241,.15);
   color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:999px;
   padding:.25rem .7rem; font-size:.74rem; cursor:pointer; margin-right:.5rem; }
@@ -671,5 +1003,5 @@ export default {
 .ai-ref-empty { font-size:.8rem; color:var(--text-muted); line-height:1.5; }
 .ai-ref-item { border-left:2px solid rgba(99,102,241,.5); padding-left:.6rem; }
 .ai-ref-q { font-size:.76rem; color:var(--text-muted); margin-bottom:.25rem; }
-.ai-ref-a { font-size:.84rem; line-height:1.5; color:#c7d2fe; }
+.ai-ref-a { font-size:.84rem; line-height:1.5; color:#c7d2fe; white-space:pre-wrap; }
 </style>
