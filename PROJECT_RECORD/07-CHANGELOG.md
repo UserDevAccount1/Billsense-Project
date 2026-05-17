@@ -67,6 +67,21 @@ Chronological summary of what was done and why. Commits are on `main`.
     Firebase SA bypassed the "access blocked" interactive-login wall;
     enabled pulling the 9.93 GB ML container and any `bill-sense-aec6b` GCP op.
 17. **This knowledge record** — `PROJECT_RECORD/` + `AGENTS.md`.
+21. **Agents page removed + Thesis Validator completed to full spec** —
+    Deleted Agents (view, route, import, sidebar link, removed `Agents`
+    from proxy DB_ROOTS allowlist; app.js redeployed). Dashboard now 16
+    pages. Thesis Validator brought to the complete original 8-feature
+    spec by adding the last 2: (a) **Draggable AI Suggestion Reference**
+    — floating, mouse-draggable panel + FAB that collects every
+    per-comment AI suggestion (question + answer), bounded to viewport;
+    (b) **Create Version from File** — file input in the New Version
+    modal: `.json` with a `sections` object replaces all sections;
+    `.txt/.md/.html` is tag-stripped into the selected section; status
+    messages inline. Bug fixed en route: a hint string containing `}}`
+    prematurely closed a Vue mustache → moved to `importHint` data prop.
+    Verified local-first (16 nav items no Agents, /agents route gone,
+    Thesis 6 tabs + New-Version file import present, no errors).
+
 20. **Thesis Compare (before/after diff)** — the missing version-comparison
     feature. New "Compare (Before / After)" tab: pick Before + After
     versions, per-section word-level LCS diff with added (green) /

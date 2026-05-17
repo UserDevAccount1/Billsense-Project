@@ -96,12 +96,6 @@
             </router-link>
           </li>
           <li>
-            <router-link to="/agents" @click="mobileMenuOpen = false">
-              <span class="material-icons">badge</span>
-              <span class="nav-text">Agents</span>
-            </router-link>
-          </li>
-          <li>
             <router-link to="/notifications" @click="mobileMenuOpen = false">
               <span class="material-icons">notifications</span>
               <span class="nav-text">Notifications</span>

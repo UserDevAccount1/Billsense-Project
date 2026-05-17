@@ -189,6 +189,14 @@
         <div class="nv-body">
           <input v-model="nv.author" class="sel" placeholder="Author" />
           <input v-model="nv.changesSummary" class="sel" placeholder="Changes summary" />
+
+          <div class="nv-import">
+            <label class="lbl">Create from file</label>
+            <input ref="nvFile" type="file" accept=".txt,.md,.markdown,.html,.htm,.json"
+                   class="filein" @change="importFile" />
+            <p class="hint">{{ importMsg || importHint }}</p>
+          </div>
+
           <label class="lbl">Edit section</label>
           <select v-model="nv.editKey" class="sel">
             <option v-for="k in Object.keys(nv.sections)" :key="k" :value="k">{{ sectionTitle(k) }}</option>
@@ -198,6 +206,29 @@
             <span class="material-icons">{{ nvSaving ? 'hourglass_top' : 'save' }}</span>
             {{ nvSaving ? 'Saving…' : 'Save as v'+nv.versionNumber }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Draggable AI Reference panel -->
+    <button v-if="!aiPanel.open && aiSugList.length" class="ai-fab" @click="aiPanel.open=true"
+            title="Open AI guidance reference">
+      <span class="material-icons">auto_awesome</span>
+      <em>{{ aiSugList.length }}</em>
+    </button>
+    <div v-if="aiPanel.open" class="ai-ref" :style="{ left: aiPanel.x+'px', top: aiPanel.y+'px' }">
+      <div class="ai-ref-head" @mousedown="startDrag">
+        <span class="material-icons">auto_awesome</span>
+        <strong>AI Suggestion Reference</strong>
+        <button class="ico" @click="aiPanel.open=false"><span class="material-icons">close</span></button>
+      </div>
+      <div class="ai-ref-body">
+        <div v-if="!aiSugList.length" class="ai-ref-empty">
+          Click the ✦ on a panel comment to get AI guidance — it collects here.
+        </div>
+        <div v-for="(it,i) in aiSugList" :key="i" class="ai-ref-item">
+          <div class="ai-ref-q">{{ it.q }}</div>
+          <div class="ai-ref-a">{{ it.a }}</div>
         </div>
       </div>
     </div>
@@ -218,12 +249,17 @@ export default {
     return {
       tab:'doc', loading:true, error:'', toast:null,
       versions:[], panelRequests:[], selVer:'', selSec:'', q:'',
-      nv:null, nvSaving:false,
-      aiSug:{}, aiBusy:false, aiOk:false,
+      nv:null, nvSaving:false, importMsg:'',
+      importHint:'JSON with a "sections" object replaces all sections · .txt/.md/.html fills the selected section below',
+      aiSug:{}, aiSugQ:{}, aiBusy:false, aiOk:false,
+      aiPanel:{ open:false, x:0, y:0, dx:0, dy:0, dragging:false },
       cmpA:'', cmpB:'', openCmp:{}
     }
   },
   computed: {
+    aiSugList(){
+      return Object.keys(this.aiSug).map(k=>({ q:this.aiSugQ[k]||'(panel comment)', a:this.aiSug[k] }))
+    },
     curVersion(){ return this.versions.find(v=>v._key===this.selVer)||null },
     cmpVerA(){ return this.versions.find(v=>v._key===this.cmpA)||null },
     cmpVerB(){ return this.versions.find(v=>v._key===this.cmpB)||null },
@@ -291,6 +327,10 @@ export default {
       }
       this.aiOk = await hasGeminiKey()
     } catch(e){ this.error=e.message } finally { this.loading=false }
+  },
+  beforeUnmount(){
+    window.removeEventListener('mousemove',this.onDrag)
+    window.removeEventListener('mouseup',this.stopDrag)
   },
   methods: {
     // ---- Compare (before / after) ----
@@ -386,12 +426,64 @@ export default {
           generationConfig:{temperature:0.5,maxOutputTokens:200}
         })
         this.aiSug={...this.aiSug,[k]:r.text.trim()}
+        this.aiSugQ={...this.aiSugQ,[k]:`[${this.sectionTitle(c.section)}] ${c.text}`}
+        if(this.aiPanel.x===0&&this.aiPanel.y===0){ this.aiPanel.x=Math.max(20,window.innerWidth-380); this.aiPanel.y=90 }
+        this.aiPanel.open=true
       }catch(e){ this.notify('AI: '+e.message,'err') } finally { this.aiBusy=false }
+    },
+    // ---- Draggable AI reference ----
+    startDrag(e){
+      this.aiPanel.dragging=true
+      this.aiPanel.dx=e.clientX-this.aiPanel.x
+      this.aiPanel.dy=e.clientY-this.aiPanel.y
+      window.addEventListener('mousemove',this.onDrag)
+      window.addEventListener('mouseup',this.stopDrag)
+    },
+    onDrag(e){
+      if(!this.aiPanel.dragging)return
+      this.aiPanel.x=Math.min(Math.max(0,e.clientX-this.aiPanel.dx),window.innerWidth-340)
+      this.aiPanel.y=Math.min(Math.max(0,e.clientY-this.aiPanel.dy),window.innerHeight-120)
+    },
+    stopDrag(){
+      this.aiPanel.dragging=false
+      window.removeEventListener('mousemove',this.onDrag)
+      window.removeEventListener('mouseup',this.stopDrag)
+    },
+    // ---- Create version from file ----
+    importFile(e){
+      const f=e.target.files&&e.target.files[0]; if(!f||!this.nv)return
+      const rd=new FileReader()
+      rd.onload=()=>{
+        const txt=String(rd.result||'')
+        const name=(f.name||'').toLowerCase()
+        try{
+          if(name.endsWith('.json')){
+            const j=JSON.parse(txt)
+            const secs=j.sections||j
+            if(secs&&typeof secs==='object'){
+              const out={}
+              for(const [k,v] of Object.entries(secs))
+                out[k]=typeof v==='string'?{content:v,title:this.sectionTitle(k)}
+                  :{content:(v&&v.content)||'',title:(v&&v.title)||this.sectionTitle(k)}
+              this.nv.sections={...this.nv.sections,...out}
+              this.nv.editKey=Object.keys(this.nv.sections)[0]
+              this.importMsg=`Imported ${Object.keys(out).length} section(s) from JSON.`
+            } else throw new Error('JSON has no "sections"')
+          } else {
+            // .txt/.md/.html -> strip tags, drop into the selected section
+            const clean=this.stripHtml(txt)
+            this.nv.sections[this.nv.editKey].content=clean
+            this.importMsg=`Loaded ${clean.split(/\s+/).filter(Boolean).length} words into "${this.sectionTitle(this.nv.editKey)}".`
+          }
+        }catch(err){ this.importMsg='Import failed: '+err.message }
+      }
+      rd.readAsText(f)
     },
     startNewVersion(){
       const cur=this.curVersion; if(!cur)return
       const nextN=Math.max(...this.versions.map(v=>v.versionNumber||0))+1
       const sections=JSON.parse(JSON.stringify(cur.sections||{}))
+      this.importMsg=''
       this.nv={ versionNumber:nextN, author:'', changesSummary:'',
         sections, editKey:Object.keys(sections)[0] }
     },
@@ -516,4 +608,27 @@ export default {
 .cmp-diff :deep(.d-add) { background:rgba(34,197,94,.22); color:#86efac; }
 .cmp-diff :deep(.d-del) { background:rgba(248,113,113,.22); color:#fca5a5; text-decoration:line-through; }
 .cmp-diff :deep(.d-eq) { color:var(--text); }
+
+/* Create-from-file */
+.nv-import { background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.2); border-radius:8px; padding:.65rem .8rem; }
+.filein { width:100%; font-size:.8rem; color:var(--text-muted); margin-top:.2rem; }
+.hint { margin:.4rem 0 0; font-size:.74rem; color:var(--text-muted); line-height:1.4; }
+
+/* Draggable AI Reference */
+.ai-fab { position:fixed; right:1.5rem; bottom:1.5rem; z-index:1001; display:flex; align-items:center; gap:.35rem;
+  background:#6366f1; color:#fff; border:0; border-radius:999px; padding:.65rem .9rem; cursor:pointer;
+  box-shadow:0 6px 20px rgba(99,102,241,.4); }
+.ai-fab .material-icons { font-size:1.1rem; } .ai-fab em { font-style:normal; font-size:.78rem; }
+.ai-ref { position:fixed; width:340px; max-height:60vh; z-index:1002; background:var(--bg-card);
+  border:1px solid rgba(99,102,241,.35); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.5);
+  display:flex; flex-direction:column; }
+.ai-ref-head { display:flex; align-items:center; gap:.45rem; padding:.65rem .85rem; cursor:move;
+  background:rgba(99,102,241,.15); border-radius:12px 12px 0 0; user-select:none; }
+.ai-ref-head .material-icons { color:#a5b4fc; font-size:1rem; }
+.ai-ref-head strong { flex:1; font-size:.85rem; }
+.ai-ref-body { overflow-y:auto; padding:.75rem .85rem; display:flex; flex-direction:column; gap:.7rem; }
+.ai-ref-empty { font-size:.8rem; color:var(--text-muted); line-height:1.5; }
+.ai-ref-item { border-left:2px solid rgba(99,102,241,.5); padding-left:.6rem; }
+.ai-ref-q { font-size:.76rem; color:var(--text-muted); margin-bottom:.25rem; }
+.ai-ref-a { font-size:.84rem; line-height:1.5; color:#c7d2fe; }
 </style>
