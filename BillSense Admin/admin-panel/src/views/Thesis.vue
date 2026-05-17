@@ -327,7 +327,7 @@
           <div class="nv-import">
             <label class="lbl">{{ nv.fromImport ? 'Imported file' : 'Create from file' }}</label>
             <input v-if="!nv.fromImport" ref="nvFile" type="file"
-                   accept=".txt,.md,.markdown,.html,.htm,.json"
+                   accept=".txt,.md,.markdown,.html,.htm,.json,.pdf"
                    class="filein" @change="importFile" />
             <p class="hint">{{ importMsg || (nv.fromImport ? nv.importNote : importHint) }}</p>
           </div>
@@ -400,7 +400,7 @@ export default {
       tab:'doc', loading:true, error:'', toast:null,
       versions:[], panelRequests:[], selVer:'', selSec:'', q:'',
       nv:null, nvSaving:false, importMsg:'',
-      importHint:'JSON with a "sections" object replaces all sections · .txt/.md/.html fills the selected section below',
+      importHint:'Imports auto-organise into the thesis chapters. .txt/.md/.html → split by headings (Background of the Study, Design and Methodology, …). JSON with a "sections" object → used as-is. CANUTAB .pdf → pre-cleaned canonical sections.',
       // editable document
       editing:false, editDoc:{}, editSaving:false,
       // AI defense
@@ -865,12 +865,79 @@ export default {
     },
 
     // ---- Create version from file ----
+    // Split a raw thesis text into the canonical FOUNDATION sections so any
+    // imported document "follows the thesis format" (Ch1 Background /
+    // Theoretical / Problem, Ch2 Methodology, Ch3 Results, Ch4 Conclusions,
+    // References). Also strips Turnitin similarity-report chrome so a
+    // Turnitin export segments correctly too.
+    segmentThesis(raw){
+      let t=String(raw||'')
+        // drop Turnitin headers/footers/cover + similarity match indices
+        .replace(/Page\s+\d+\s+of\s+\d+[^\n]*/gi,'\n')
+        .replace(/Submission ID trn:oid[^\n]*/gi,'\n')
+        .replace(/Integrity (Submission|Overview)[^\n]*/gi,'\n')
+        .replace(/^\s*University of the Cordilleras\s*$/gim,'\n')
+        .replace(/^\s*\d{1,3}\s+(?=[A-Z])/gm,'')   // leading match-number token
+        .replace(/^\s*\d{1,3}\s*$/gm,'')           // lone match-number lines
+        .replace(/\r/g,'')
+      // reflow: collapse the double-spacing some PDF text layers produce
+      t=t.split('\n').map(s=>s.trim()).filter(Boolean).join('\n')
+
+      // Phrase-anchored heading detection (the Turnitin export sometimes
+      // glues the chapter label to the heading, e.g. "Chapter 2DESIGN AND
+      // METHODOLOGY", so we match the heading phrase itself rather than a
+      // whole line). Body = text between the END of this heading and the
+      // START of the next.
+      const DEFS=[
+        { key:'chapter1_introduction', re:/Background of the Study/i },
+        { key:'chapter1_theoretical',  re:/Theoretical\s*\/?\s*(?:and\s*)?(?:Conceptual\s*)?Framework/i },
+        { key:'chapter1_problem',      re:/Statement of the Problem/i },
+        { key:'chapter2_methodology',  re:/(?:Chapter\s*2\s*)?(?:DESIGN AND METHODOLOGY|Research Design (?:and|&) Methodology|Design and Methodology)/i },
+        { key:'chapter3_results',      re:/(?:CHAPTER\s*3\s*)?PRESENTATION,?\s*ANALYSIS[^\n]*?DATA|CHAPTER\s*3\b/i },
+        { key:'chapter4_conclusion',   re:/(?:CHAPTER\s*4\s*)?(?:CONCLUSIONS AND RECOMMENDATIONS|Summary,?\s*Conclusions(?:,?\s*and\s*Recommendations)?)/i },
+        { key:'references',            re:/\n\s*(?:References|Bibliography)\s*\n/i }
+      ]
+      const hits=[]
+      for(const d of DEFS){
+        const m=d.re.exec(t)
+        if(m) hits.push({ key:d.key, start:m.index, end:m.index+m[0].length })
+      }
+      hits.sort((a,b)=>a.start-b.start)
+      const out={}
+      for(let i=0;i<hits.length;i++){
+        const bodyStart=hits[i].end
+        const bodyEnd=i+1<hits.length?hits[i+1].start:t.length
+        const body=t.slice(bodyStart,bodyEnd).replace(/\n{2,}/g,'\n\n').trim()
+        out[hits[i].key]={ title:FOUND_TITLE[hits[i].key], content:body }
+      }
+      return { sections:out, found:hits.length }
+    },
     importFile(e){
       const f=e.target.files&&e.target.files[0]; if(!f||!this.nv)return
+      const name=(f.name||'').toLowerCase()
+      // Browsers can't reliably parse arbitrary PDFs; for the known CANUTAB
+      // thesis use the pre-cleaned, correctly-formatted bundled foundation.
+      if(name.endsWith('.pdf')){
+        if(/canutab/.test(name)){
+          const secs={}
+          for(const ff of FOUNDATION){
+            const s=foundationDoc.sections&&foundationDoc.sections[ff.key]
+            secs[ff.key]={ title:ff.title, content:(s&&s.content)||'' }
+          }
+          this.nv.sections={...this.nv.sections,...secs}
+          this.nv.editKey=Object.keys(secs)[0]
+          this.nv.source=foundationDoc.source||f.name
+          const w=this.wordCount(Object.values(secs).map(s=>s.content).join(' '))
+          this.importMsg=`Imported CANUTAB thesis (${w.toLocaleString()} words) into ${Object.keys(secs).length} canonical sections — follows the thesis format. Set the version, then Save.`
+        } else {
+          this.importMsg='PDF text extraction is not available in-browser. Export this thesis to .txt/.md/.html (or a sections JSON) and re-import — it will be auto-organised into the thesis chapters.'
+        }
+        e.target.value=''
+        return
+      }
       const rd=new FileReader()
       rd.onload=()=>{
         const txt=String(rd.result||'')
-        const name=(f.name||'').toLowerCase()
         try{
           if(name.endsWith('.json')){
             const j=JSON.parse(txt)
@@ -885,9 +952,22 @@ export default {
               this.importMsg=`Imported ${Object.keys(out).length} section(s) from JSON.`
             } else throw new Error('JSON has no "sections"')
           } else {
+            // .txt/.md/.html → strip tags then segment into the canonical
+            // thesis structure so the import "follows the format"
             const clean=this.stripHtml(txt)
-            this.nv.sections[this.nv.editKey].content=clean
-            this.importMsg=`Loaded ${clean.split(/\s+/).filter(Boolean).length} words into "${this.sectionTitle(this.nv.editKey)}".`
+            const seg=this.segmentThesis(clean)
+            if(seg.found>=2){
+              const merged={...this.buildSkeleton(this.nv)}
+              for(const [k,v] of Object.entries(seg.sections))
+                merged[k]={ title:FOUND_TITLE[k]||this.sectionTitle(k), content:v.content }
+              this.nv.sections=merged
+              this.nv.editKey=Object.keys(seg.sections)[0]
+              const w=this.wordCount(Object.values(seg.sections).map(s=>s.content).join(' '))
+              this.importMsg=`Organised into ${seg.found} thesis sections (${w.toLocaleString()} words) — follows the thesis format.`
+            } else {
+              this.nv.sections[this.nv.editKey].content=clean
+              this.importMsg=`No thesis headings detected — loaded ${clean.split(/\s+/).filter(Boolean).length} words into "${this.sectionTitle(this.nv.editKey)}". (Add headings like "Background of the Study", "Design and Methodology" to auto-split.)`
+            }
           }
         }catch(err){ this.importMsg='Import failed: '+err.message }
       }

@@ -21,6 +21,26 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+26. **Thesis Validator — imports auto-organise into the canonical thesis
+    format** — file import no longer dumps everything into one box. New
+    `segmentThesis()` (client port of `clean_thesis.mjs`) strips Turnitin
+    similarity-report chrome (page/footer/Submission-ID lines, leading
+    match-number indices) and **phrase-anchors** the chapter headings —
+    needed because the Turnitin export glues the label to the heading
+    ("Chapter 2DESIGN AND METHODOLOGY"); body = text between the END of one
+    heading and the START of the next. `.txt/.md/.html` imports now split
+    into Ch1 Background / Theoretical / Problem, Ch2 Methodology, Ch3
+    Results, Ch4 Conclusions, References (≥2 headings → formatted, else
+    falls back to the selected section with a hint to add headings).
+    `.pdf` added to the accept list: the CANUTAB file loads the pre-cleaned
+    bundled foundation (correctly formatted); other PDFs get a clear
+    "export to text" message (no in-browser PDF parser — keeps the
+    zero-dep stack). Verified: Node-validated the segmenter on the real
+    Turnitin extraction (6 sections, Ch2 3,372 w now correctly split) and
+    in-browser on a synthetic .txt (6 sections, distinct correct content
+    per chapter, accept includes .pdf). Deployed Firebase + Docker; cPanel
+    on merge.
+
 25. **Thesis Validator — user-typed version number + label on import/create**
     — versioning only helps if you can name what you're comparing, so every
     save now lets you set it. New Version modal gained an editable **Version
