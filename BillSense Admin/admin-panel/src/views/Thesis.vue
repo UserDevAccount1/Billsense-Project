@@ -82,14 +82,22 @@
             <span class="material-icons">edit</span> Edit document
           </button>
           <template v-else>
-            <button class="edit-btn save" @click="saveEditAsVersion" :disabled="editSaving">
+            <select v-model="saveMode" class="sel sm" :disabled="editSaving" title="Where to save your edits">
+              <option value="new">New version (v{{ nextVersionNumber }})</option>
+              <option value="update">Update current ({{ vshort(curVersion) }})</option>
+            </select>
+            <button class="edit-btn save" @click="saveEdit" :disabled="editSaving">
               <span class="material-icons">{{ editSaving ? 'hourglass_top' : 'save' }}</span>
-              {{ editSaving ? 'Saving…' : 'Save as v'+nextVersionNumber }}
+              {{ editSaving ? 'Saving…' : (saveMode==='new' ? 'Save as v'+nextVersionNumber : 'Update '+vshort(curVersion)) }}
             </button>
             <button class="edit-btn ghost" @click="cancelEdit" :disabled="editSaving">
               <span class="material-icons">close</span> Cancel
             </button>
-            <span class="edit-note">Editing a working copy — “Save as new version” writes a new immutable version, then shows the diff.</span>
+            <span class="edit-note">
+              {{ saveMode==='new'
+                 ? 'Saves a new immutable version, then shows the diff vs the one you edited.'
+                 : 'Overwrites the selected version in place (no new version is created).' }}
+            </span>
           </template>
         </div>
         <div class="paper" :class="{ editing }">
@@ -129,10 +137,28 @@
             </select>
           </div>
           <div class="cmp-legend">
-            <button class="cmp-mode" @click="sideBySide=!sideBySide">
+            <button v-if="!cmpEditing" class="cmp-mode" @click="sideBySide=!sideBySide">
               <span class="material-icons">{{ sideBySide ? 'view_agenda' : 'vertical_split' }}</span>
               {{ sideBySide ? 'Inline view' : 'Side-by-side' }}
             </button>
+            <button v-if="!cmpEditing" class="cmp-mode edit" @click="startCmpEdit"
+                    :disabled="!cmpVerB || cmpA===cmpB"
+                    :title="cmpA===cmpB ? 'Pick two different versions' : 'Edit the After version here'">
+              <span class="material-icons">edit</span> Edit After ({{ vshort(cmpVerB) }})
+            </button>
+            <template v-else>
+              <select v-model="cmpSaveMode" class="sel xs" :disabled="cmpSaving">
+                <option value="new">New version (v{{ nextVersionNumber }})</option>
+                <option value="update">Update {{ vshort(cmpVerB) }}</option>
+              </select>
+              <button class="cmp-mode save" @click="saveCmpEdit" :disabled="cmpSaving">
+                <span class="material-icons">{{ cmpSaving ? 'hourglass_top' : 'save' }}</span>
+                {{ cmpSaving ? 'Saving…' : (cmpSaveMode==='new' ? 'Save as v'+nextVersionNumber : 'Update '+vshort(cmpVerB)) }}
+              </button>
+              <button class="cmp-mode ghost" @click="cancelCmpEdit" :disabled="cmpSaving">
+                <span class="material-icons">close</span> Cancel
+              </button>
+            </template>
             <span class="lg add">added</span><span class="lg del">removed</span>
             <span class="cmp-sum">{{ changedSections.length }} of {{ allCmpKeys.length }} sections changed</span>
           </div>
@@ -155,19 +181,34 @@
           </span>
         </div>
 
-        <div v-if="cmpA === cmpB" class="state">Pick two different versions to compare.</div>
+        <div v-if="cmpA === cmpB && !cmpEditing" class="state">Pick two different versions to compare.</div>
         <div v-else-if="!visibleCmpKeys.length" class="state">No sections match this filter/search.</div>
         <div v-else class="cmp-secs">
-          <div v-for="k in visibleCmpKeys" :key="k" class="cmp-sec" :class="{ unchanged: !isChanged(k) }">
-            <div class="cmp-sec-head" @click="toggleSec(k)">
-              <span class="material-icons">{{ openCmp[k] ? 'expand_more' : 'chevron_right' }}</span>
+          <div v-for="k in visibleCmpKeys" :key="k" class="cmp-sec"
+               :class="{ unchanged: !cmpEditing && !isChanged(k) }">
+            <div class="cmp-sec-head" @click="!cmpEditing && toggleSec(k)">
+              <span class="material-icons">{{ (cmpEditing || openCmp[k]) ? 'expand_more' : 'chevron_right' }}</span>
               <strong>{{ cmpTitle(k) }}</strong>
+              <small v-if="cmpEditing" class="wc">{{ wordCount(cmpEdit[k]) }} words</small>
               <span v-if="cmpQ && cmpKeyHits(k)" class="cmp-hit">{{ cmpKeyHits(k) }} match</span>
-              <span class="cmp-tag" :class="isChanged(k) ? 'chg' : 'same'">
+              <span v-if="!cmpEditing" class="cmp-tag" :class="isChanged(k) ? 'chg' : 'same'">
                 {{ isChanged(k) ? changeStat(k) : 'no change' }}
               </span>
             </div>
-            <template v-if="openCmp[k]">
+            <template v-if="cmpEditing">
+              <div class="cmp-split">
+                <div class="cmp-pane">
+                  <div class="cmp-pane-h del">Before — {{ vshort(cmpVerA) }} (reference)</div>
+                  <div class="cmp-diff">{{ cmpContent(cmpVerA,k) || '(empty)' }}</div>
+                </div>
+                <div class="cmp-pane">
+                  <div class="cmp-pane-h add">After — editing {{ vshort(cmpVerB) }}</div>
+                  <textarea v-model="cmpEdit[k]" class="cmp-edit" rows="12"
+                            :placeholder="'Write '+cmpTitle(k)+'…'"></textarea>
+                </div>
+              </div>
+            </template>
+            <template v-else-if="openCmp[k]">
               <div v-if="sideBySide" class="cmp-split">
                 <div class="cmp-pane">
                   <div class="cmp-pane-h del">Before — v{{ cmpVerA && cmpVerA.versionNumber }}</div>
@@ -204,6 +245,22 @@
       <!-- ===== PANEL COMMENTS ===== -->
       <div v-else class="panels">
         <div v-if="!panelRequests.length" class="state">No panel requests.</div>
+
+        <div v-if="panelRequests.length" class="gen-bar">
+          <span class="gen-title">
+            <span class="material-icons">checklist</span>
+            Selective generate — {{ selCount }} selected
+          </span>
+          <button class="gchip" @click="selectAllComments(false)" :disabled="batchBusy">Select all</button>
+          <button class="gchip" @click="selectAllComments(true)" :disabled="batchBusy">Only without defense</button>
+          <button class="gchip" @click="clearSel" :disabled="batchBusy || !selCount">Clear</button>
+          <button class="gen-run" @click="generateSelected" :disabled="batchBusy || !selCount || !aiOk"
+                  :title="aiOk ? 'Generate AI defense for the selected comments' : 'AI not configured'">
+            <span class="material-icons">{{ batchBusy ? 'hourglass_top' : 'auto_awesome' }}</span>
+            {{ batchBusy ? (batchMsg||'Generating…') : `Generate selected (${selCount})` }}
+          </button>
+        </div>
+
         <div v-for="req in panelRequests" :key="req._key" class="preq">
           <div class="preq-head">
             <div><strong>{{ req.title || '(untitled request)' }}</strong>
@@ -220,7 +277,12 @@
           <div v-for="(p,pi) in (req.panelists||[])" :key="pi" class="panelist">
             <div class="pl-name"><span class="material-icons">person</span>{{ p.name || ('Panelist '+(pi+1)) }}</div>
             <div v-if="!(p.comments||[]).length" class="nocmt">No comments.</div>
-            <div v-for="(c,ci) in (p.comments||[])" :key="c.id||ci" class="cmt">
+            <div v-for="(c,ci) in (p.comments||[])" :key="c.id||ci" class="cmt"
+                 :class="{ selrow: gsel[req._key+':'+pi+':'+ci] }">
+              <input type="checkbox" class="cmt-chk"
+                     :checked="!!gsel[req._key+':'+pi+':'+ci]"
+                     @change="toggleSel(req._key,pi,ci)"
+                     title="Select for batch generate" />
               <span class="sec-tag">{{ sectionTitle(c.section) }}</span>
               <div class="cmt-main">
                 <span class="cmt-text">{{ c.text }}</span>
@@ -402,9 +464,13 @@ export default {
       nv:null, nvSaving:false, importMsg:'',
       importHint:'Imports auto-organise into the thesis chapters. .txt/.md/.html → split by headings (Background of the Study, Design and Methodology, …). JSON with a "sections" object → used as-is. CANUTAB .pdf → pre-cleaned canonical sections.',
       // editable document
-      editing:false, editDoc:{}, editSaving:false,
+      editing:false, editDoc:{}, editSaving:false, saveMode:'new',
+      // editable Compare (After pane)
+      cmpEditing:false, cmpEdit:{}, cmpSaveMode:'new', cmpSaving:false,
       // AI defense
       aiDef:{}, aiDefQ:{}, aiBusy:false, aiBusyKey:'', aiOk:false,
+      // selective batch generate
+      gsel:{}, batchBusy:false, batchMsg:'',
       aiPanel:{ open:false, x:0, y:0, dx:0, dy:0, dragging:false },
       // compare
       cmpA:'', cmpB:'', openCmp:{}, sideBySide:true,
@@ -450,6 +516,11 @@ export default {
     },
     changedSections(){ return this.allCmpKeys.filter(k=>this.isChanged(k)) },
     visibleCmpKeys(){
+      if(this.cmpEditing){
+        const keys=Object.keys(this.cmpEdit||{})
+        const extra=keys.filter(k=>!FOUND_TITLE[k])
+        return [...FOUNDATION.map(f=>f.key).filter(k=>keys.includes(k)), ...extra]
+      }
       let ks=this.allCmpKeys
       if(this.cmpFilter==='changed') ks=ks.filter(k=>this.isChanged(k))
       else if(this.cmpFilter==='same') ks=ks.filter(k=>!this.isChanged(k))
@@ -473,6 +544,7 @@ export default {
     curSection(){ const s=this.curVersion&&this.curVersion.sections; return s?s[this.selSec]:null },
     totalComments(){ return this.panelRequests.reduce((n,r)=>n+(r.panelists||[]).reduce((m,p)=>m+(p.comments||[]).length,0),0) },
     openComments(){ return this.panelRequests.reduce((n,r)=>n+(r.panelists||[]).reduce((m,p)=>m+(p.comments||[]).filter(c=>!['resolved','rejected'].includes(c.status)).length,0),0) },
+    selCount(){ return Object.keys(this.gsel).filter(k=>this.gsel[k]).length },
     validation(){
       const v=this.curVersion; if(!v||!v.sections)return []
       const secs=Object.entries(v.sections)
@@ -683,52 +755,96 @@ export default {
       }catch(e){ this.notify('Delete failed: '+e.message,'err') }
       finally{ this.delBusy=false }
     },
+    // Core generate+parse+persist for one comment. Throws on failure.
+    // Does NOT touch aiBusy/notify so it is reusable by single & batch.
+    async runDefend(req,pi,ci,c){
+      const k=`${req._key}:${pi}:${ci}`
+      const fallbackSection=c.section&&FOUND_TITLE[c.section]?c.section:this.bestSectionFor(c.text)
+      const curSecText=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[fallbackSection]
+        ? this.stripHtml(this.curVersion.sections[fallbackSection].content).slice(0,1800) : ''
+      const r=await chat({
+        systemPrompt:
+          'You are a thesis-defense advisor for "BillSense", a Philippine peso counterfeit-detection '+
+          'mobile app (Android + YOLOv8 ML API). A defense panelist raised a comment/question. '+
+          'Reply using EXACTLY this labelled plain-text template and nothing else (no markdown, '+
+          'no JSON). Each label on its own line, content below it:\n'+
+          '[DEFENSE]\n(2-3 sentences directly countering/defending the thesis against the comment)\n'+
+          '[APP]\n(1-2 sentences: a concrete mobile-app enhancement that answers the panelist)\n'+
+          '[DOC]\n(1-2 sentences: what to add/clarify in the thesis document)\n'+
+          '[SECTION]\n(exactly one of: chapter1_introduction, chapter1_theoretical, chapter1_problem, '+
+          'chapter2_methodology, chapter3_results, chapter4_conclusion, references)\n'+
+          '[REVISED]\n(a 60-160 word improved passage to insert into that section addressing the comment)\n'+
+          '[END]',
+        userMessage:
+          `Panel comment: "${c.text}"\nTagged section: ${this.sectionTitle(fallbackSection)}\n`+
+          `Current text of that section (excerpt):\n${curSecText||'(empty)'}\n\nReply with the template now.`,
+        generationConfig:{ temperature:0.55, maxOutputTokens:900 }
+      })
+      const parsed=this.parseAI(r.text, fallbackSection)
+      parsed.savedTs=Date.now()
+      this.aiDef={...this.aiDef,[k]:parsed}
+      this.aiDefQ={...this.aiDefQ,[k]:`[${this.sectionTitle(parsed.section)}] ${c.text}`}
+      // persist onto the comment so it survives reloads (generate-once)
+      const panelists=JSON.parse(JSON.stringify(req.panelists||[]))
+      if(panelists[pi]&&panelists[pi].comments&&panelists[pi].comments[ci]){
+        panelists[pi].comments[ci].aiDefense=parsed
+        await patch(`thesis_panel_requests/${req._key}`,{panelists})
+        req.panelists=panelists
+      }
+      return parsed
+    },
     async defend(req,pi,ci,c){
       if(!this.aiOk){ this.notify('AI not configured','err'); return }
       const k=`${req._key}:${pi}:${ci}`
       this.aiBusy=true; this.aiBusyKey=k
-      const fallbackSection=c.section&&FOUND_TITLE[c.section]?c.section:this.bestSectionFor(c.text)
-      const curSecText=this.curVersion&&this.curVersion.sections&&this.curVersion.sections[fallbackSection]
-        ? this.stripHtml(this.curVersion.sections[fallbackSection].content).slice(0,1800) : ''
       try{
-        const r=await chat({
-          systemPrompt:
-            'You are a thesis-defense advisor for "BillSense", a Philippine peso counterfeit-detection '+
-            'mobile app (Android + YOLOv8 ML API). A defense panelist raised a comment/question. '+
-            'Reply using EXACTLY this labelled plain-text template and nothing else (no markdown, '+
-            'no JSON). Each label on its own line, content below it:\n'+
-            '[DEFENSE]\n(2-3 sentences directly countering/defending the thesis against the comment)\n'+
-            '[APP]\n(1-2 sentences: a concrete mobile-app enhancement that answers the panelist)\n'+
-            '[DOC]\n(1-2 sentences: what to add/clarify in the thesis document)\n'+
-            '[SECTION]\n(exactly one of: chapter1_introduction, chapter1_theoretical, chapter1_problem, '+
-            'chapter2_methodology, chapter3_results, chapter4_conclusion, references)\n'+
-            '[REVISED]\n(a 60-160 word improved passage to insert into that section addressing the comment)\n'+
-            '[END]',
-          userMessage:
-            `Panel comment: "${c.text}"\nTagged section: ${this.sectionTitle(fallbackSection)}\n`+
-            `Current text of that section (excerpt):\n${curSecText||'(empty)'}\n\nReply with the template now.`,
-          generationConfig:{ temperature:0.55, maxOutputTokens:900 }
-        })
-        const parsed=this.parseAI(r.text, fallbackSection)
-        parsed.savedTs=Date.now()
-        this.aiDef={...this.aiDef,[k]:parsed}
-        this.aiDefQ={...this.aiDefQ,[k]:`[${this.sectionTitle(parsed.section)}] ${c.text}`}
+        await this.runDefend(req,pi,ci,c)
         if(this.aiPanel.x===0&&this.aiPanel.y===0){ this.aiPanel.x=Math.max(20,window.innerWidth-380); this.aiPanel.y=90 }
         this.aiPanel.open=true
-        // persist the generated defense onto the comment so it survives
-        // reloads and is shared from the database (generate-once)
-        try{
-          const panelists=JSON.parse(JSON.stringify(req.panelists||[]))
-          if(panelists[pi]&&panelists[pi].comments&&panelists[pi].comments[ci]){
-            panelists[pi].comments[ci].aiDefense=parsed
-            await patch(`thesis_panel_requests/${req._key}`,{panelists})
-            req.panelists=panelists
-            this.notify('AI defense generated & saved')
-          } else {
-            this.notify('AI defense generated (not persisted: comment shape)')
-          }
-        }catch(e){ this.notify('Generated, but save failed: '+e.message,'err') }
+        this.notify('AI defense generated & saved')
       }catch(e){ this.notify('AI: '+e.message,'err') } finally { this.aiBusy=false; this.aiBusyKey='' }
+    },
+    // ---- Selective batch generate ----
+    toggleSel(rk,pi,ci){
+      const k=`${rk}:${pi}:${ci}`
+      const n={...this.gsel}; if(n[k])delete n[k]; else n[k]=true; this.gsel=n
+    },
+    clearSel(){ this.gsel={} },
+    eachComment(fn){
+      for(const req of this.panelRequests)
+        (req.panelists||[]).forEach((p,pi)=>
+          (p.comments||[]).forEach((c,ci)=>fn(req,pi,ci,c)))
+    },
+    selectAllComments(onlyWithoutDefense){
+      const n={}
+      this.eachComment((req,pi,ci)=>{
+        const k=`${req._key}:${pi}:${ci}`
+        if(onlyWithoutDefense && this.aiDef[k]) return
+        n[k]=true
+      })
+      this.gsel=n
+    },
+    async generateSelected(){
+      if(this.batchBusy||!this.aiOk)return
+      const jobs=[]
+      this.eachComment((req,pi,ci,c)=>{
+        if(this.gsel[`${req._key}:${pi}:${ci}`]) jobs.push({req,pi,ci,c})
+      })
+      if(!jobs.length){ this.notify('Nothing selected','err'); return }
+      this.batchBusy=true
+      let ok=0, fail=0
+      for(let i=0;i<jobs.length;i++){
+        const j=jobs[i]
+        this.batchMsg=`Generating ${i+1}/${jobs.length}…`
+        this.aiBusyKey=`${j.req._key}:${j.pi}:${j.ci}`
+        try{ await this.runDefend(j.req,j.pi,j.ci,j.c); ok++ }
+        catch{ fail++ }
+      }
+      this.aiBusyKey=''
+      this.batchBusy=false; this.batchMsg=''
+      if(ok&&!this.aiPanel.open){ this.aiPanel.x=this.aiPanel.x||Math.max(20,window.innerWidth-380); this.aiPanel.y=this.aiPanel.y||90; this.aiPanel.open=true }
+      this.gsel={}
+      this.notify(`Batch done — ${ok} generated & saved${fail?`, ${fail} failed`:''}`, fail?'err':'ok')
     },
     parseAI(text,fallbackSection){
       let t=String(text||'').trim()
@@ -837,31 +953,98 @@ export default {
       this.editing=true
     },
     cancelEdit(){ this.editing=false; this.editDoc={} },
-    async saveEditAsVersion(){
+    vshort(v){ return v ? `v${v.versionNumber}`+(v.versionLabel?` · ${v.versionLabel}`:'') : '—' },
+    // Build a canonical sections map from an editDoc {key:text}
+    sectionsFromEdit(editDoc){
+      const sections={}
+      for(const f of FOUNDATION)
+        sections[f.key]={ title:f.title, content:String(editDoc[f.key]||'').trim() }
+      for(const k of Object.keys(editDoc))
+        if(!FOUND_TITLE[k]) sections[k]={ title:this.sectionTitle(k), content:String(editDoc[k]||'').trim() }
+      return sections
+    },
+    // Persist sections either as a NEW version or by UPDATING an existing
+    // version in place. Returns the version _key written.
+    async commitSections({ sections, mode, baseVer, summary }){
+      if(mode==='update' && baseVer && baseVer._key){
+        const rec={
+          versionNumber:baseVer.versionNumber,
+          versionLabel:baseVer.versionLabel||'',
+          author:baseVer.author||'editor',
+          changesSummary:summary||baseVer.changesSummary||`Updated ${this.vshort(baseVer)}`,
+          date:new Date().toISOString(),
+          sections
+        }
+        if(baseVer.source)rec.source=baseVer.source
+        await patch(`thesis_versions/${baseVer._key}`,rec)
+        const i=this.versions.findIndex(v=>v._key===baseVer._key)
+        if(i>=0) this.versions.splice(i,1,{_key:baseVer._key,...rec})
+        return baseVer._key
+      }
+      const num=this.nextVersionNumber
+      const rec={ versionNumber:num, versionLabel:'',
+        author:(baseVer&&baseVer.author)||'editor',
+        changesSummary:summary||`Inline edit → v${num}`,
+        date:new Date().toISOString(), sections }
+      const key=`v${num}_${Date.now()}`
+      await patch('thesis_versions',{[key]:rec})
+      this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
+      return key
+    },
+    async saveEdit(){
       if(!this.curVersion)return
       this.editSaving=true
       const prevKey=this.selVer
-      const num=this.nextVersionNumber
-      const sections={}
-      for(const f of FOUNDATION)
-        sections[f.key]={ title:f.title, content:(this.editDoc[f.key]||'').trim() }
-      for(const k of Object.keys(this.editDoc))
-        if(!FOUND_TITLE[k]) sections[k]={ title:this.sectionTitle(k), content:(this.editDoc[k]||'').trim() }
-      const rec={ versionNumber:num, author:(this.curVersion.author||'editor'),
-        changesSummary:`Inline document edit (v${num})`,
-        date:new Date().toISOString(), sections }
-      const key=`v${num}_${Date.now()}`
+      const base=this.curVersion
+      const sections=this.sectionsFromEdit(this.editDoc)
       try{
-        await patch('thesis_versions',{[key]:rec})
-        this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
+        const key=await this.commitSections({
+          sections, mode:this.saveMode, baseVer:base,
+          summary:this.saveMode==='update'
+            ? `In-place edit of ${this.vshort(base)}`
+            : `Inline document edit → v${this.nextVersionNumber}`
+        })
         this.editing=false; this.editDoc={}
         this.selVer=key
-        // jump straight to the before/after diff: prev → new
-        this.cmpA=prevKey; this.cmpB=key
-        this.cmpFilter='changed'
-        this.tab='compare'
-        this.notify(`Saved v${num} — showing changed sections`)
+        if(this.saveMode==='new'){
+          this.cmpA=prevKey; this.cmpB=key; this.cmpFilter='changed'; this.tab='compare'
+          this.notify('Saved new version — showing changed sections')
+        }else{
+          this.notify(`Updated ${this.vshort(base)} in place`)
+        }
       }catch(e){ this.notify(e.message,'err') } finally { this.editSaving=false }
+    },
+    // ---- Editable Compare (After pane) ----
+    startCmpEdit(){
+      const b=this.cmpVerB; if(!b){ this.notify('Pick an After version','err'); return }
+      const sk=this.buildSkeleton(b)
+      const ed={}
+      for(const k of Object.keys(sk)) ed[k]=this.stripHtml(sk[k].content)
+      this.cmpEdit=ed
+      this.cmpSaveMode='new'
+      this.cmpEditing=true
+    },
+    cancelCmpEdit(){ this.cmpEditing=false; this.cmpEdit={} },
+    async saveCmpEdit(){
+      const base=this.cmpVerB; if(!base)return
+      this.cmpSaving=true
+      const sections=this.sectionsFromEdit(this.cmpEdit)
+      try{
+        const key=await this.commitSections({
+          sections, mode:this.cmpSaveMode, baseVer:base,
+          summary:this.cmpSaveMode==='update'
+            ? `In-place edit of ${this.vshort(base)} (from Compare)`
+            : `Edited from Compare (After ${this.vshort(base)}) → v${this.nextVersionNumber}`
+        })
+        this.cmpEditing=false; this.cmpEdit={}
+        if(this.cmpSaveMode==='new'){
+          this.cmpA=base._key; this.cmpB=key; this.cmpFilter='changed'
+          this.notify('Saved new version — diff vs the version you edited')
+        }else{
+          this.cmpB=key
+          this.notify(`Updated ${this.vshort(base)} in place`)
+        }
+      }catch(e){ this.notify(e.message,'err') } finally { this.cmpSaving=false }
     },
 
     // ---- Create version from file ----
@@ -1098,6 +1281,18 @@ export default {
 .chk.ok .material-icons{color:#4ade80;} .chk.warn .material-icons{color:#fbbf24;} .chk.bad .material-icons{color:#f87171;}
 .chk strong { font-size:.9rem; } .chk p { margin:.2rem 0 0; font-size:.8rem; color:var(--text-muted); }
 .panels { display:flex; flex-direction:column; gap:1rem; }
+.gen-bar { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; background:var(--bg-card);
+  border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:.6rem .85rem; position:sticky; top:0; z-index:5; }
+.gen-title { display:flex; align-items:center; gap:.4rem; font-size:.84rem; font-weight:600; margin-right:auto; }
+.gen-title .material-icons { font-size:1rem; color:#a5b4fc; }
+.gchip { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text-muted);
+  border-radius:999px; padding:.28rem .7rem; font-size:.74rem; cursor:pointer; }
+.gchip:hover:not(:disabled){ color:var(--text); } .gchip:disabled{ opacity:.45; cursor:not-allowed; }
+.gen-run { display:flex; align-items:center; gap:.35rem; background:#6366f1; color:#fff; border:0;
+  border-radius:8px; padding:.42rem .85rem; font-size:.8rem; font-weight:600; cursor:pointer; }
+.gen-run:disabled { opacity:.5; cursor:not-allowed; } .gen-run .material-icons { font-size:1rem; }
+.cmt-chk { margin-top:.2rem; flex-shrink:0; accent-color:#6366f1; cursor:pointer; }
+.cmt.selrow { background:rgba(99,102,241,.06); border-radius:6px; }
 .preq { background:var(--bg-card); border:1px solid rgba(255,255,255,.06); border-radius:12px; padding:1rem 1.25rem; }
 .preq-head { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
 .preq-head strong { font-size:.98rem; } .src { color:var(--text-muted); font-size:.78rem; }
@@ -1190,6 +1385,15 @@ export default {
   color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:999px;
   padding:.25rem .7rem; font-size:.74rem; cursor:pointer; margin-right:.5rem; }
 .cmp-mode .material-icons { font-size:.95rem; }
+.cmp-mode:disabled { opacity:.45; cursor:not-allowed; }
+.cmp-mode.edit { background:rgba(255,163,26,.15); color:#ffa31a; border-color:rgba(255,163,26,.3); }
+.cmp-mode.save { background:#ffa31a; color:#0f172a; border-color:#ffa31a; }
+.cmp-mode.ghost { background:transparent; color:var(--text-muted); border-color:rgba(255,255,255,.15); }
+.cmp-sec-head .wc { font-size:.7rem; color:var(--text-muted); font-weight:400; }
+.cmp-edit { width:100%; box-sizing:border-box; min-height:220px; background:rgba(0,0,0,.25);
+  border:0; border-left:2px solid rgba(34,197,94,.4); color:var(--text); padding:.85rem 1rem;
+  font-size:.88rem; line-height:1.7; resize:vertical; font-family:inherit; }
+.cmp-edit:focus { outline:none; border-left-color:#4ade80; background:rgba(0,0,0,.32); }
 .cmp-split { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(255,255,255,.06);
   border-top:1px solid rgba(255,255,255,.05); }
 @media (max-width:760px){ .cmp-split { grid-template-columns:1fr; } }

@@ -21,6 +21,26 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+27. **Thesis Validator — edit-anywhere with new/update save + selective batch
+    AI generate** — (a) **Save mode:** the Document editor and a new
+    **"Edit After" mode in Compare** both expose a "New version (vN) /
+    Update current (vX)" selector. New = immutable new version then auto-diff;
+    Update = `patch('thesis_versions/<key>', rec)` overwrites that version in
+    place (keeps number/label/author, no duplicate). Shared `commitSections`
+    + `sectionsFromEdit` back both editors. In Compare-edit the After column
+    becomes 7 canonical textareas with the Before column as a read-only
+    reference. (b) **Selective batch generate** in Panel Comments: a sticky
+    toolbar with a checkbox per comment, "Select all / Only without defense /
+    Clear" and **"Generate selected (N)"**. `defend` was split into a
+    reusable `runDefend` (chat→parse→persist, no UI side-effects) used by the
+    single button and the batch loop; the loop runs sequentially, shows
+    "Generating i/N", persists each to RTDB, clears the selection and reports
+    "Batch done — N generated & saved". Verified local-first: Document
+    Update kept the version count (in-place) w/ "Updated v5 in place" toast;
+    Compare Edit-After → Save new created v6 and re-diffed (1/7 changed);
+    selective generate of 2 picked comments raised the defense-card count
+    2→4 and cleared selection. Deployed Firebase + Docker; cPanel on merge.
+
 26. **Thesis Validator — imports auto-organise into the canonical thesis
     format** — file import no longer dumps everything into one box. New
     `segmentThesis()` (client port of `clean_thesis.mjs`) strips Turnitin
