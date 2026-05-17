@@ -67,6 +67,16 @@ Chronological summary of what was done and why. Commits are on `main`.
     Firebase SA bypassed the "access blocked" interactive-login wall;
     enabled pulling the 9.93 GB ML container and any `bill-sense-aec6b` GCP op.
 17. **This knowledge record** — `PROJECT_RECORD/` + `AGENTS.md`.
+22. **Thesis Compare: side-by-side two-pane view** — added a Before|After
+    two-column layout to the Compare tab (left pane = before w/ removals
+    highlighted, right pane = after w/ additions highlighted; the other
+    side's changes hidden per pane). Toggle button switches Side-by-side
+    ⇄ Inline; defaults to side-by-side. Responsive: collapses to single
+    column < 760px. Verified local-first: 2 panes with "Before — vN" /
+    "After — vN" headers, toggle round-trips. Multi-credential login also
+    added this session: admin@neuralyx.dev/neuralyx2026 + admin/admin123
+    (Firebase Admin node) alongside Billsense/admin (CRED_HASHES[]).
+
 21. **Agents page removed + Thesis Validator completed to full spec** —
     Deleted Agents (view, route, import, sidebar link, removed `Agents`
     from proxy DB_ROOTS allowlist; app.js redeployed). Dashboard now 16

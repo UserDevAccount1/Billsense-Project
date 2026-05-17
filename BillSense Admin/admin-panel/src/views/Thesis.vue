@@ -99,6 +99,10 @@
             </select>
           </div>
           <div class="cmp-legend">
+            <button class="cmp-mode" @click="sideBySide=!sideBySide">
+              <span class="material-icons">{{ sideBySide ? 'view_agenda' : 'vertical_split' }}</span>
+              {{ sideBySide ? 'Inline view' : 'Side-by-side' }}
+            </button>
             <span class="lg add">added</span><span class="lg del">removed</span>
             <span class="cmp-sum">{{ changedSections.length }} of {{ allCmpKeys.length }} sections changed</span>
           </div>
@@ -114,7 +118,19 @@
                 {{ isChanged(k) ? changeStat(k) : 'no change' }}
               </span>
             </div>
-            <div v-if="openCmp[k]" class="cmp-diff" v-html="diffHtml(k)"></div>
+            <template v-if="openCmp[k]">
+              <div v-if="sideBySide" class="cmp-split">
+                <div class="cmp-pane">
+                  <div class="cmp-pane-h del">Before — v{{ cmpVerA && cmpVerA.versionNumber }}</div>
+                  <div class="cmp-diff" v-html="sidePane(k,'before')"></div>
+                </div>
+                <div class="cmp-pane">
+                  <div class="cmp-pane-h add">After — v{{ cmpVerB && cmpVerB.versionNumber }}</div>
+                  <div class="cmp-diff" v-html="sidePane(k,'after')"></div>
+                </div>
+              </div>
+              <div v-else class="cmp-diff" v-html="diffHtml(k)"></div>
+            </template>
           </div>
         </div>
       </div>
@@ -253,7 +269,7 @@ export default {
       importHint:'JSON with a "sections" object replaces all sections · .txt/.md/.html fills the selected section below',
       aiSug:{}, aiSugQ:{}, aiBusy:false, aiOk:false,
       aiPanel:{ open:false, x:0, y:0, dx:0, dy:0, dragging:false },
-      cmpA:'', cmpB:'', openCmp:{}
+      cmpA:'', cmpB:'', openCmp:{}, sideBySide:true
     }
   },
   computed: {
@@ -382,6 +398,18 @@ export default {
         if(tok.t==='add') return '<span class="d-add">'+s+'</span>'
         if(tok.t==='del') return '<span class="d-del">'+s+'</span>'
         return '<span class="d-eq">'+s+'</span>'
+      }).join('')
+    },
+    // One pane of the side-by-side view. 'before' shows eq + del (removed
+    // highlighted); 'after' shows eq + add (added highlighted).
+    sidePane(k,which){
+      const a=this.cmpContent(this.cmpVerA,k), b=this.cmpContent(this.cmpVerB,k)
+      if(a===b) return '<span class="d-eq">'+this.esc((which==='before'?a:b)||'(empty)')+'</span>'
+      const keep = which==='before' ? 'del' : 'add'
+      return this.diffWords(a,b).map(tok=>{
+        if(tok.t==='eq') return '<span class="d-eq">'+this.esc(tok.s)+'</span>'
+        if(tok.t===keep) return '<span class="d-'+keep+'">'+this.esc(tok.s)+'</span>'
+        return ''   // hide the other side's changes in this pane
       }).join('')
     },
     sectionTitle(k){
@@ -608,6 +636,19 @@ export default {
 .cmp-diff :deep(.d-add) { background:rgba(34,197,94,.22); color:#86efac; }
 .cmp-diff :deep(.d-del) { background:rgba(248,113,113,.22); color:#fca5a5; text-decoration:line-through; }
 .cmp-diff :deep(.d-eq) { color:var(--text); }
+.cmp-mode { display:flex; align-items:center; gap:.35rem; background:rgba(99,102,241,.15);
+  color:#a5b4fc; border:1px solid rgba(99,102,241,.3); border-radius:999px;
+  padding:.25rem .7rem; font-size:.74rem; cursor:pointer; margin-right:.5rem; }
+.cmp-mode .material-icons { font-size:.95rem; }
+.cmp-split { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(255,255,255,.06);
+  border-top:1px solid rgba(255,255,255,.05); }
+@media (max-width:760px){ .cmp-split { grid-template-columns:1fr; } }
+.cmp-pane { background:var(--bg-card); display:flex; flex-direction:column; min-width:0; }
+.cmp-pane-h { font-size:.74rem; font-weight:600; padding:.4rem .85rem; letter-spacing:.03em;
+  position:sticky; top:0; }
+.cmp-pane-h.del { background:rgba(248,113,113,.14); color:#fca5a5; }
+.cmp-pane-h.add { background:rgba(34,197,94,.14); color:#86efac; }
+.cmp-pane .cmp-diff { border-top:0; max-height:60vh; }
 
 /* Create-from-file */
 .nv-import { background:rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.2); border-radius:8px; padding:.65rem .8rem; }
