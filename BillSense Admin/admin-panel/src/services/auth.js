@@ -8,7 +8,12 @@
 // Credentials are NOT stored in plaintext. We store sha256("user:pass") and
 // compare against the hash of what the user types.
 
-const CRED_HASH = '4f62caf7d2c1ca3626c9db8771ace186235c151f72f029c6a7f214ada560b4ec' // Billsense:admin
+// Accepted credentials, stored as sha256("user:pass") — never plaintext.
+const CRED_HASHES = [
+  '4f62caf7d2c1ca3626c9db8771ace186235c151f72f029c6a7f214ada560b4ec', // Billsense / admin
+  'ea107395a3110d8c202620770a82167095a469e703fa37afdd83fb586321d716', // admin@neuralyx.dev / neuralyx2026
+  'bf6b5bdb74c79ece9fc0ad0ac9fb0359f9555d4f35a83b2e6ec69ae99e09603d'  // admin / admin123 (Firebase Admin node)
+]
 const SESSION_KEY = 'billsense_auth'
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8 // 8 hours
 
@@ -83,7 +88,7 @@ function sha256Hex(ascii) {
 
 export async function login(username, password) {
   const hash = sha256Hex(`${username}:${password}`)
-  if (hash !== CRED_HASH) return false
+  if (!CRED_HASHES.includes(hash)) return false
   const token = { ok: true, ts: Date.now() }
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(token))
   return true

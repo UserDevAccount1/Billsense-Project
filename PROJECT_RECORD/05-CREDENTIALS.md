@@ -21,7 +21,7 @@ cPanel API token, Firebase service-account JSON.
 | **Gemini API key** | `AIza…` GCP API key, IP-restricted to `185.2.168.24,185.2.168.30`, API-restricted to Generative Language | cPanel host `…/.gemini-key` (server-only) | `/api/gemini/*` proxy (Billy, GitNexus AI) |
 | **GitHub PAT** | `ghp_…`, scopes `repo,workflow` | env `GH_TOKEN` (not stored) | CI/CD secret mgmt, run watching |
 | **Firebase Web SDK key** | `AIzaSyCKdSYeVztx0gXo2Z-Q6CkZ_SJT2pcajAI` | hardcoded in `src/services/firebase.js` | **intentionally public** — Firebase Web keys are project identifiers, scoped by RTDB rules + Firebase authorized domains. NOT a secret. |
-| **Dashboard login** | username `Billsense`, password `admin` | sha256("Billsense:admin") hash baked in `src/services/auth.js` | the soft client-side gate |
+| **Dashboard login** | 3 accepted accounts (soft gate) | sha256("user:pass") hashes in `src/services/auth.js` `CRED_HASHES[]` | the soft client-side gate. Accepted: `Billsense`/`admin`, `admin@neuralyx.dev`/`neuralyx2026`, `admin`/`admin123` (the Firebase `Admin` node creds) |
 | **MAPS_API_KEY** | string | Android `local.properties` (gitignored) | Android build only |
 
 ## Gitignored paths (never commit these)
