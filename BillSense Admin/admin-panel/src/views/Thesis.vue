@@ -46,7 +46,7 @@
           <label class="lbl">Version</label>
           <select v-model="selVer" class="sel">
             <option v-for="v in versions" :key="v._key" :value="v._key">
-              v{{ v.versionNumber }} — {{ (v.date||'').slice(0,10) }} — {{ v.author }}
+              {{ vlabel(v) }}
             </option>
           </select>
           <p class="chg" v-if="curVersion">{{ curVersion.changesSummary }}</p>
@@ -75,7 +75,7 @@
       <div v-else-if="tab==='full'" class="full">
         <div class="full-bar">
           <select v-model="selVer" class="sel sm" :disabled="editing">
-            <option v-for="v in versions" :key="v._key" :value="v._key">v{{ v.versionNumber }} — {{ v.author }}</option>
+            <option v-for="v in versions" :key="v._key" :value="v._key">{{ vlabel(v) }}</option>
           </select>
           <input v-model="q" class="sel sm" placeholder="search whole document…" />
           <button v-if="!editing" class="edit-btn" @click="startEdit" :disabled="!curVersion">
@@ -115,7 +115,7 @@
             <label class="lbl">Before</label>
             <select v-model="cmpA" class="sel sm">
               <option v-for="v in versions" :key="v._key" :value="v._key">
-                v{{ v.versionNumber }} — {{ v.author }} — {{ (v.date||'').slice(0,10) }}
+                {{ vlabel(v) }}
               </option>
             </select>
           </div>
@@ -124,7 +124,7 @@
             <label class="lbl">After</label>
             <select v-model="cmpB" class="sel sm">
               <option v-for="v in versions" :key="v._key" :value="v._key">
-                v{{ v.versionNumber }} — {{ v.author }} — {{ (v.date||'').slice(0,10) }}
+                {{ vlabel(v) }}
               </option>
             </select>
           </div>
@@ -300,18 +300,36 @@
     <div v-if="nv" class="modal" @click.self="nv=null">
       <div class="modal-box">
         <div class="modal-head">
-          <strong>New Version (v{{ nv.versionNumber }})</strong>
+          <strong>{{ nv.fromImport ? 'Import as new version' : 'New Version' }}
+            (v{{ nv.versionNumber }}{{ nv.versionLabel ? ' · '+nv.versionLabel : '' }})</strong>
           <button class="ico" @click="nv=null"><span class="material-icons">close</span></button>
         </div>
         <div class="nv-body">
+          <div class="nv-verrow">
+            <div class="nv-vn">
+              <label class="lbl">Version number</label>
+              <input v-model.number="nv.versionNumber" type="number" min="1" step="1"
+                     class="sel" placeholder="e.g. 4" />
+            </div>
+            <div class="nv-vl">
+              <label class="lbl">Version label / name <em>(optional)</em></label>
+              <input v-model="nv.versionLabel" class="sel"
+                     placeholder='e.g. "Post-panel revision", "Final draft"' />
+            </div>
+          </div>
+          <p class="hint" v-if="versionNumberTaken(nv.versionNumber)">
+            ⚠ v{{ nv.versionNumber }} already exists — saving keeps both so you can still compare them.
+          </p>
+
           <input v-model="nv.author" class="sel" placeholder="Author" />
-          <input v-model="nv.changesSummary" class="sel" placeholder="Changes summary" />
+          <input v-model="nv.changesSummary" class="sel" placeholder="Changes summary (what changed vs the previous version)" />
 
           <div class="nv-import">
-            <label class="lbl">Create from file</label>
-            <input ref="nvFile" type="file" accept=".txt,.md,.markdown,.html,.htm,.json"
+            <label class="lbl">{{ nv.fromImport ? 'Imported file' : 'Create from file' }}</label>
+            <input v-if="!nv.fromImport" ref="nvFile" type="file"
+                   accept=".txt,.md,.markdown,.html,.htm,.json"
                    class="filein" @change="importFile" />
-            <p class="hint">{{ importMsg || importHint }}</p>
+            <p class="hint">{{ importMsg || (nv.fromImport ? nv.importNote : importHint) }}</p>
           </div>
 
           <label class="lbl">Edit section <span v-if="nv.pointKey" class="point">→ AI points here</span></label>
@@ -321,7 +339,7 @@
           <textarea v-model="nv.sections[nv.editKey].content" class="nv-text" rows="12"></textarea>
           <button class="save" @click="saveNewVersion" :disabled="nvSaving">
             <span class="material-icons">{{ nvSaving ? 'hourglass_top' : 'save' }}</span>
-            {{ nvSaving ? 'Saving…' : 'Save as v'+nv.versionNumber }}
+            {{ nvSaving ? 'Saving…' : ('Save as v'+nv.versionNumber + (nv.versionLabel ? ' · '+nv.versionLabel : '')) }}
           </button>
         </div>
       </div>
@@ -769,10 +787,10 @@ export default {
         content:(prev?prev:'')+addition }
       this.importMsg=''
       this.nv={
-        versionNumber:this.nextVersionNumber,
+        versionNumber:this.nextVersionNumber, versionLabel:'',
         author:'AI defense apply',
         changesSummary:`Address panel comment in ${this.sectionTitle(target)}: "${(c.text||'').slice(0,80)}"`,
-        sections, editKey:target, pointKey:target
+        sections, editKey:target, pointKey:target, fromImport:false, importNote:''
       }
       this.notify(`Staged a new version — review ${this.sectionTitle(target)} and Save`)
     },
@@ -875,54 +893,66 @@ export default {
       }
       rd.readAsText(f)
     },
+    // version selector / option label incl. the user-typed label
+    vlabel(v){
+      if(!v)return ''
+      return `v${v.versionNumber}`+(v.versionLabel?` · ${v.versionLabel}`:'')+
+        ` — ${(v.date||'').slice(0,10)} — ${v.author||'—'}`
+    },
+    versionNumberTaken(n){
+      const x=Number(n); if(!x)return false
+      return this.versions.some(v=>Number(v.versionNumber)===x)
+    },
     startNewVersion(){
       const cur=this.curVersion; if(!cur)return
       const sections=this.buildSkeleton(cur)
       this.importMsg=''
-      this.nv={ versionNumber:this.nextVersionNumber, author:'', changesSummary:'',
-        sections, editKey:Object.keys(sections)[0], pointKey:'' }
+      this.nv={ versionNumber:this.nextVersionNumber, versionLabel:'',
+        author:'', changesSummary:'', sections,
+        editKey:Object.keys(sections)[0], pointKey:'', fromImport:false, importNote:'' }
     },
     async saveNewVersion(){
       if(!this.nv)return
-      if(!this.nv.author.trim()){ this.notify('Author required','err'); return }
+      const num=parseInt(this.nv.versionNumber,10)
+      if(!Number.isFinite(num)||num<1){ this.notify('Enter a valid version number (≥ 1)','err'); return }
+      if(!String(this.nv.author||'').trim()){ this.notify('Author required','err'); return }
+      this.nv.versionNumber=num
       this.nvSaving=true
-      const rec={ versionNumber:this.nv.versionNumber, author:this.nv.author.trim(),
-        changesSummary:this.nv.changesSummary.trim()||`Revision v${this.nv.versionNumber}`,
+      const label=String(this.nv.versionLabel||'').trim()
+      const rec={ versionNumber:num, versionLabel:label,
+        author:this.nv.author.trim(),
+        changesSummary:String(this.nv.changesSummary||'').trim()||`Revision v${num}`,
         date:new Date().toISOString(), sections:this.nv.sections }
-      const key=`v${this.nv.versionNumber}_${Date.now()}`
+      if(this.nv.source)rec.source=this.nv.source
+      const key=`v${num}_${Date.now()}`
       try{
         await patch('thesis_versions',{[key]:rec})
         this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
         this.selVer=key; this.nv=null
-        this.notify(`Version v${rec.versionNumber} saved`)
+        this.notify(`Saved v${num}${label?' · '+label:''}`)
       }catch(e){ this.notify(e.message,'err') } finally { this.nvSaving=false }
     },
 
-    // ---- Import the CANUTAB PDF foundation as a new version ----
-    async importFoundation(){
-      if(this.fImporting)return
-      this.fImporting=true
-      try{
-        const num=this.nextVersionNumber
-        const sections={}
-        for(const f of FOUNDATION){
-          const s=foundationDoc.sections&&foundationDoc.sections[f.key]
-          sections[f.key]={ title:f.title, content:(s&&s.content)||'' }
-        }
-        const rec={
-          versionNumber:num,
-          author:foundationDoc.author||'CANUTAB et al. (imported PDF)',
-          changesSummary:foundationDoc.changesSummary||'Imported from CANUTAB-THESIS (2) (1).pdf',
-          date:new Date().toISOString(),
-          source:foundationDoc.source||'CANUTAB-THESIS (2) (1).pdf',
-          sections
-        }
-        const key=`v${num}_${Date.now()}`
-        await patch('thesis_versions',{[key]:rec})
-        this.versions=[...this.versions,{_key:key,...rec}].sort((a,b)=>(a.versionNumber||0)-(b.versionNumber||0))
-        this.selVer=key
-        this.notify(`Imported CANUTAB thesis as v${num} (${this.wordCount(Object.values(sections).map(s=>s.content).join(' '))} words)`)
-      }catch(e){ this.notify('Import failed: '+e.message,'err') } finally { this.fImporting=false }
+    // ---- Import the CANUTAB PDF foundation: stage the modal so the user
+    //      types the version number/label before it is saved ----
+    importFoundation(){
+      if(this.fImporting||this.nv)return
+      const sections={}
+      for(const f of FOUNDATION){
+        const s=foundationDoc.sections&&foundationDoc.sections[f.key]
+        sections[f.key]={ title:f.title, content:(s&&s.content)||'' }
+      }
+      const words=this.wordCount(Object.values(sections).map(s=>s.content).join(' '))
+      this.importMsg=''
+      this.nv={
+        versionNumber:this.nextVersionNumber, versionLabel:'',
+        author:foundationDoc.author||'CANUTAB et al. (imported PDF)',
+        changesSummary:foundationDoc.changesSummary||'Imported from CANUTAB-THESIS (2) (1).pdf',
+        sections, editKey:Object.keys(sections)[0], pointKey:'',
+        fromImport:true,
+        importNote:`CANUTAB-THESIS (2) (1).pdf · ${words.toLocaleString()} words · 7 canonical sections. Set the version number/label, then Save.`,
+        source:foundationDoc.source||'CANUTAB-THESIS (2) (1).pdf'
+      }
     }
   }
 }
@@ -1031,6 +1061,10 @@ export default {
 .modal-box.sm { max-width:460px; }
 .modal-head { display:flex; justify-content:space-between; align-items:center; padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,.08); }
 .nv-body { padding:1rem 1.25rem; overflow-y:auto; display:flex; flex-direction:column; gap:.6rem; }
+.nv-verrow { display:flex; gap:.7rem; }
+.nv-vn { flex:0 0 130px; } .nv-vl { flex:1; }
+.nv-verrow .lbl { margin-top:0; } .nv-verrow .lbl em { font-style:normal; opacity:.6; text-transform:none; }
+@media (max-width:520px){ .nv-verrow { flex-direction:column; } .nv-vn { flex:1; } }
 .nv-text { width:100%; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:.6rem; color:inherit; font-size:.84rem; line-height:1.5; box-sizing:border-box; resize:vertical; }
 .save { background:#ffa31a; color:#0f172a; border:0; border-radius:8px; padding:.6rem; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.4rem; }
 .save:disabled { opacity:.5; cursor:not-allowed; } .save .material-icons { font-size:1.1rem; }

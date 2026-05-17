@@ -21,6 +21,22 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 Chronological summary of what was done and why. Commits are on `main`.
 
+25. **Thesis Validator — user-typed version number + label on import/create**
+    — versioning only helps if you can name what you're comparing, so every
+    save now lets you set it. New Version modal gained an editable **Version
+    number** field + optional **Version label/name** (e.g. "Post-panel
+    revision", "Final draft"); a hint warns if the number is already taken
+    (both are kept so they're still comparable). "Import CANUTAB PDF" no
+    longer auto-writes — it now stages the same modal (file input hidden,
+    shows file + word count) so you type the version before Save. `vlabel(v)`
+    renders `vN · label — date — author` in the Versions, Document and
+    Compare(before/after) selectors so labelled versions are easy to pick for
+    diffing. `saveNewVersion` validates the number (≥1), persists
+    `versionLabel` + `source` to `thesis_versions`. Verified local-first:
+    Import→modal "v5 · Post-panel revision", typed number/label propagate to
+    head/save/toast, version appears labelled in all three selectors and is
+    selectable in Compare. Deployed Firebase + Docker; cPanel on merge.
+
 24. **Thesis Validator — delete-all-versions + persistent generate-once AI
     defense** — (a) **Delete all versions:** red "Delete all versions" tab
     button → confirm modal → `remove('thesis_versions')` wipes the RTDB path
