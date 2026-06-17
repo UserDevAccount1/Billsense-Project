@@ -197,6 +197,12 @@ model_loader = LazyModelLoader()
 # ----------------------------
 # Configuration
 # ----------------------------
+# Minimum % of expected security features that must be verified for a single scan
+# to be called GENUINE (lighting/tilt-dependent features can't show in one photo).
+# Tune this to trade off false-positives vs false-negatives. Multi-Scan accumulates
+# features across angles and will comfortably exceed this.
+GENUINE_COVERAGE_THRESHOLD = 50.0
+
 DENOMINATION_CLASSES = ['100', '1000', '20', '200', '50', '500']
 SECURITY_MODEL_CLASSES = ['concealed value', 'security thread', 'serial number', 'value', 'value watermark', 'watermark', 'see through mark']
 OVI_CLASSES = ['optically variable ink']
@@ -1045,80 +1051,57 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any]) -> 
     try:
         reasons = []
         is_genuine = True
-        
+
         # Safely get features with defaults
         security_features = features_result.get("security_features", {})
         counterfeit_indicators = features_result.get("counterfeit_indicators", {})
         is_high_denom = features_result.get("is_high_denomination", False)
-        
-        # Ensure all basic features exist in security_features
-        basic_features_required = [
-            'concealed_value', 
-            'security_thread', 
-            'serial_number', 
-            'value', 
-            'watermark',
-            'see_through_mark'
-        ]
-        
-        for feature in basic_features_required:
-            if feature not in security_features:
-                security_features[feature] = False
-        
-        # Check for false EVP (counterfeit indicator)
+        coverage = features_result.get("coverage_percentage", 0) or 0
+        detected = features_result.get("detected_features_count", 0)
+        total = features_result.get("total_expected_features", 9 if is_high_denom else 6)
+
+        # RELAXED RULE (v17.1): a single front-lit camera photo CANNOT capture the
+        # watermark / see-through register (need transmitted light) or OVI / OVD
+        # (need tilt). Their absence on one scan must NOT condemn a genuine note —
+        # otherwise every real bill is flagged counterfeit. So we judge by how many
+        # of the expected features were actually verified (coverage), and keep the
+        # real forgery markers as hard fails. Use Multi-Scan to verify the
+        # lighting/tilt-dependent features across angles.
+        lighting_dependent = ['watermark', 'see_through_mark', 'optically_variable_ink', 'ovd']
+
         if counterfeit_indicators.get('false_enhanced_value_panel', False):
-            reasons.append("Detected FALSE enhanced value panel - COUNTERFEIT")
+            # A FALSE enhanced value panel is a genuine forgery marker.
             is_genuine = False
-        
-        # Basic security features required for all notes
-        missing_basic = [feature for feature in basic_features_required if not security_features.get(feature, False)]
-        if missing_basic:
-            reasons.append(f"Missing basic security features: {', '.join(missing_basic)}")
+            reasons.append("Detected a FALSE enhanced value panel — strong counterfeit indicator.")
+        elif (not is_high_denom) and security_features.get('enhanced_value_panel', False):
             is_genuine = False
-        
-        # Special checks for high denomination notes (500, 1000)
-        if is_high_denom:
-            high_denom_features = ['optically_variable_ink', 'ovd', 'enhanced_value_panel']
-            # Ensure high denomination features exist
-            for feature in high_denom_features:
-                if feature not in security_features:
-                    security_features[feature] = False
-            
-            missing_high_denom = [feature for feature in high_denom_features if not security_features.get(feature, False)]
-            
-            if missing_high_denom:
-                reasons.append(f"High denomination note missing features: {', '.join(missing_high_denom)}")
-                is_genuine = False
+            reasons.append("Enhanced value panel present on a low-denomination note (should not be there).")
+        elif coverage >= GENUINE_COVERAGE_THRESHOLD:
+            is_genuine = True
+            reasons.append(f"{detected}/{total} security features verified ({coverage:.0f}% coverage) — consistent with a genuine note.")
+            missing_light = [f for f in lighting_dependent if not security_features.get(f, False)]
+            if missing_light:
+                reasons.append("Watermark / see-through / OVI need backlight or tilt — use Multi-Scan to confirm them.")
         else:
-            # For lower denominations, enhanced value panel should not be present
-            if security_features.get('enhanced_value_panel', False):
-                reasons.append("Lower denomination note has enhanced value panel (should not be present)")
-                is_genuine = False
-        
-        # If no issues found, note is genuine
-        if is_genuine:
-            if is_high_denom:
-                reasons.append("All 9 security features verified - GENUINE HIGH DENOMINATION NOTE")
-            else:
-                reasons.append("All 6 security features verified - GENUINE LOW DENOMINATION NOTE")
-        
+            is_genuine = False
+            reasons.append(f"Only {detected}/{total} features detected ({coverage:.0f}%). Re-scan with better lighting/angle, or use Multi-Scan for a confident result.")
+
         # Determine confidence level
-        coverage = features_result.get("coverage_percentage", 0)
-        if coverage >= 90:
+        if coverage >= 80:
             confidence = "HIGH"
-        elif coverage >= 70:
+        elif coverage >= GENUINE_COVERAGE_THRESHOLD:
             confidence = "MEDIUM"
         else:
             confidence = "LOW"
-        
+
         return {
             "is_genuine": is_genuine,
             "status": "GENUINE" if is_genuine else "COUNTERFEIT",
             "confidence": confidence,
             "reasons": reasons,
             "coverage_percentage": coverage,
-            "detected_features_count": features_result.get("detected_features_count", 0),
-            "total_expected_features": features_result.get("total_expected_features", 0),
+            "detected_features_count": detected,
+            "total_expected_features": total,
             "denomination_type": "HIGH_DENOMINATION" if is_high_denom else "LOW_DENOMINATION",
             "has_false_evp": counterfeit_indicators.get('false_enhanced_value_panel', False)
         }
