@@ -46,7 +46,9 @@ public class RealTimeScanManager {
 
     public RealTimeScanManager(RealTimeScanListener listener) {
         this.client = new OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS) // No timeout for a persistent connection
+                .pingInterval(20, TimeUnit.SECONDS)    // Keep-alive ping every 20 seconds
                 .build();
         this.gson = new Gson();
         this.listener = listener;
@@ -146,7 +148,10 @@ public class RealTimeScanManager {
         @Override
         public void onClosing(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
             super.onClosing(webSocket, code, reason);
-            Log.i(TAG, "WebSocket closing: " + reason);
+            Log.i(TAG, "WebSocket closing: code=" + code + " reason=" + reason);
+            // Echo the close to complete the WebSocket close handshake
+            webSocket.close(code, reason);
+            RealTimeScanManager.this.webSocket = null;
             if (listener != null) {
                 listener.onConnectionClosing(reason);
             }
@@ -156,6 +161,8 @@ public class RealTimeScanManager {
         public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
             super.onFailure(webSocket, t, response);
             Log.e(TAG, "WebSocket connection failed!", t);
+            // Clear the stale reference so connect() can create a fresh one
+            RealTimeScanManager.this.webSocket = null;
             if (listener != null) {
                 listener.onScanError("Connection failed: " + t.getMessage());
             }

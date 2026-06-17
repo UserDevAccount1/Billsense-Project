@@ -46,6 +46,12 @@ public class FBInterface {
     public interface OnLoginCallBack {
         void onLoginSuccess(DataSnapshot userSnapshot);
 
+        /**
+         * Called when a REST-only login succeeds (no DataSnapshot available).
+         * The user's ID, email, and name are passed directly.
+         */
+        void onLoginSuccessDirect(String userId, String email, String name);
+
         void onLoginFailed(String errorMessage);
 
         void onLoginUnverified(DataSnapshot userSnapshot);
@@ -129,10 +135,26 @@ public class FBInterface {
         void onScanReportSaveFailure(Exception e);
     }
 
+    public interface OnPasswordResetCallBack {
+        void onResetCodeStored(String userId);
+        void onPasswordResetSuccess();
+        void onPasswordResetFailed(String errorMessage);
+    }
+
     public interface OnScanReportRetrievedListener{
         void onScanReportRetrieved(ArrayList<ScanReport> scanReportList);
         void onNoScanReportsFound();
         void onScanReportRetrievalFailed(Exception exception);
+    }
+
+    /**
+     * Callback for pure REST JSON fetch — no Firebase SDK DataSnapshot involved.
+     * Returns the raw JSON string from Firebase REST API.
+     */
+    public interface OnRestJsonFetchCallback {
+        void onJsonFetchSuccess(String jsonBody);
+        void onJsonFetchEmpty();
+        void onJsonFetchFailed(String errorMessage);
     }
 
 }

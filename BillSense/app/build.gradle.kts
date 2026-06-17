@@ -33,6 +33,10 @@ android {
 
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${project.properties["FIREBASE_PROJECT_ID"]}\"")
+        buildConfigField("String", "ABACUS_DEPLOYMENT_TOKEN", "\"${localProperties.getProperty("ABACUS_DEPLOYMENT_TOKEN", "")}\"")
+        buildConfigField("String", "ABACUS_DEPLOYMENT_ID", "\"${localProperties.getProperty("ABACUS_DEPLOYMENT_ID", "")}\"")
+        buildConfigField("String", "EMAIL_SENDER_ADDRESS", "\"${localProperties.getProperty("EMAIL_SENDER_ADDRESS", "")}\"")
+        buildConfigField("String", "EMAIL_SENDER_PASSWORD", "\"${localProperties.getProperty("EMAIL_SENDER_PASSWORD", "")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -60,11 +64,12 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
-            buildConfigField("String", "WS_BASE_URL", "\"ws://10.0.2.2:8080\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://billsense-api-340624938055.asia-southeast2.run.app\"")
+            buildConfigField("String", "WS_BASE_URL", "\"wss://billsense-api-340624938055.asia-southeast2.run.app\"")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

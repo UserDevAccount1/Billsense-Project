@@ -9,16 +9,14 @@ import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
-import android.os.StrictMode;
+import android.util.Log;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.app.billsense.R;
 import com.app.billsense.databinding.ActivityCasesBinding;
@@ -56,23 +54,34 @@ public class CasesActivity extends AppCompatActivity implements OnMapReadyCallba
         binding = ActivityCasesBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
-
-        StrictMode.setThreadPolicy(policy);
-
         userId = PrefManager.getInstance().getUserId();
         fbUtils = new FBUtils();
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(com.app.billsense.R.id.map);
-        mapFragment.getMapAsync(this);
+        if (mapFragment != null) {
+            mapFragment.getMapAsync(this);
+        } else {
+            showMapError("Map fragment not available");
+        }
+
+        binding.mapRetryBtn.setOnClickListener(v -> {
+            binding.mapErrorLayout.setVisibility(View.GONE);
+            SupportMapFragment retryFragment = (SupportMapFragment) getSupportFragmentManager()
+                    .findFragmentById(R.id.map);
+            if (retryFragment != null) {
+                retryFragment.getMapAsync(this);
+            }
+        });
 
         toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.cases));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.cases));
+        }
 
         toolbar.setNavigationOnClickListener(view -> {
             finish();
@@ -84,10 +93,22 @@ public class CasesActivity extends AppCompatActivity implements OnMapReadyCallba
     public void onMapReady(@NonNull GoogleMap googleMap) {
         mMap = googleMap;
 
+        // Check if the map actually loaded (invalid API key results in blank map)
+        mMap.setOnMapLoadedCallback(() -> {
+            Log.d("==Cases", "Map loaded successfully");
+            binding.mapErrorLayout.setVisibility(View.GONE);
+        });
+
         getAllCases();
-        // Add a marker in Sydney and move the camera
-        LatLng sydney = new LatLng(16.413599, 120.591616);
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
+        // Default camera position: Philippines
+        LatLng philippines = new LatLng(16.413599, 120.591616);
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(philippines, 6f));
+    }
+
+    private void showMapError(String message) {
+        Log.e("==Cases", "Map error: " + message);
+        binding.mapErrorLayout.setVisibility(View.VISIBLE);
+        binding.mapErrorText.setText(message);
     }
 
     private void getAllCases() {
@@ -98,7 +119,7 @@ public class CasesActivity extends AppCompatActivity implements OnMapReadyCallba
                 mMap.clear();
                 for (DataSnapshot snapshot : dataSnapshot.getChildren()){
                     Cases cases = snapshot.getValue(Cases.class);
-                    assert cases != null;
+                    if (cases == null) continue;
                     casesArrayList.add(cases);
                     addCasesLocations(cases);
                     //                    LatLng latLng = new LatLng(cases.getLatitude(), cases.getLongitude());

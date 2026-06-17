@@ -161,8 +161,9 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     @Override
     protected void onResume() {
         super.onResume();
-        // Only reconnect if we are in the live scanning state and have permission.
-        if (currentUiState == UiState.READY_TO_CAPTURE &&
+        // Only reconnect if we are in the live scanning state, the camera is initialized,
+        // and we have permission. The imageAnalysis check prevents a race on first launch.
+        if (currentUiState == UiState.READY_TO_CAPTURE && imageAnalysis != null &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "onResume: Reconnecting WebSocket for live scan.");
             scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);

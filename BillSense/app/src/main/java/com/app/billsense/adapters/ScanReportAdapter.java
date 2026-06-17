@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
 
+import com.app.billsense.R;
+
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -38,10 +40,33 @@ public class ScanReportAdapter extends RecyclerView.Adapter<ScanReportAdapter.Vi
     public void onBindViewHolder(@NonNull ScanReportAdapter.ViewHolder holder, int position) {
         ScanReport scanReport = scanReportArrayList.get(position);
         holder.binding.scanTitleTv.setText(scanReport.getModel());
-        Glide.with(context)
-                .load(scanReport.getImageUrl())
-                .into(holder.binding.scanResultIv);
-        holder.binding.scanTitleTv.setText("Analysis Type: " + scanReport.getModel());
+        String imageUrl = scanReport.getImageUrl();
+        if (imageUrl != null && !imageUrl.isEmpty()) {
+            if (imageUrl.startsWith("/")) {
+                // Local file path
+                Glide.with(context)
+                        .load(new java.io.File(imageUrl))
+                        .placeholder(R.drawable.scan_bill)
+                        .error(R.drawable.scan_bill)
+                        .into(holder.binding.scanResultIv);
+            } else {
+                // Remote URL
+                Glide.with(context)
+                        .load(imageUrl)
+                        .placeholder(R.drawable.scan_bill)
+                        .error(R.drawable.scan_bill)
+                        .into(holder.binding.scanResultIv);
+            }
+        } else {
+            holder.binding.scanResultIv.setImageResource(R.drawable.scan_bill);
+        }
+        // Show status and model info
+        String title = scanReport.getModel() != null ? scanReport.getModel() : "Scan";
+        String status = scanReport.getStatus() != null ? scanReport.getStatus() : "";
+        if (!status.isEmpty()) {
+            title = status + " — " + title;
+        }
+        holder.binding.scanTitleTv.setText(title);
         holder.binding.scanResultIv.setOnClickListener(view -> {
             DialogUtils.displayFullImageDialog(context,"Scan Report", scanReport.getImageUrl(), null);
         });

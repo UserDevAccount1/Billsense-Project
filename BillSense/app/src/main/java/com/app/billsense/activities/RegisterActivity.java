@@ -78,7 +78,7 @@ public class RegisterActivity extends AppCompatActivity {
             } else if (!isValidPhone(phone)) {
                 setEditTextError(binding.inputPhone,
                         getString(R.string.enter_valid_phone_number));
-            } else if (imageUri == null || downloadIdUrl.isEmpty()) {
+            } else if (imageUri == null || downloadIdUrl == null || downloadIdUrl.isEmpty()) {
                 showToast(RegisterActivity.this,
                         getString(R.string.upload_valid_id));
             } else if (!isValidPassword(password)) {
@@ -117,7 +117,7 @@ public class RegisterActivity extends AppCompatActivity {
                 new Pair<>("phone", binding.ccp.getSelectedCountryCodeWithPlus() + phone),
                 new Pair<>("downloadIdUrl", downloadIdUrl),
                 new Pair<>("status", getString(R.string.unverified)),
-                new Pair<>("password", password));
+                new Pair<>("password", com.app.billsense.utils.PasswordUtils.hashPassword(password)));
     }
 
     @Override

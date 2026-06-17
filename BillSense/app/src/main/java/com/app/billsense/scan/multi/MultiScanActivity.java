@@ -384,10 +384,12 @@ public class MultiScanActivity extends AppCompatActivity implements RealTimeScan
     @Override
     protected void onResume() {
         super.onResume();
-        // In MultiScan, we are always in a live scanning state until we move to the next screen.
-        // Reconnect if we have permission.
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            Log.d(TAG, "onResume: Reconnecting WebSocket for multi-angle scan.");
+        // In MultiScan, reconnect if camera is initialized and we have permission.
+        if (imageAnalysis != null &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            // Reset angle counter on reconnect since the server starts fresh
+            liveAngleCounter = 1;
+            Log.d(TAG, "onResume: Reconnecting WebSocket for multi-angle scan. Reset angle to 1.");
             scanManager.connect(RealTimeScanManager.ENDPOINT_MULTI_ANGLE_SCAN);
         }
     }

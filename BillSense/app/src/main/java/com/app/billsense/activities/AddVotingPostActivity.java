@@ -71,9 +71,11 @@ public class AddVotingPostActivity extends AppCompatActivity {
 
         MaterialToolbar toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.add_post));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.add_post));
+        }
 
         Intent intent = getIntent();
         if (intent != null && intent.hasExtra("post_json")) {

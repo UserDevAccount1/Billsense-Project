@@ -56,9 +56,11 @@ public class VotingActivity extends AppCompatActivity implements VotingPostInter
 
         MaterialToolbar toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.voting_system));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.voting_system));
+        }
 
         toolbar.setNavigationOnClickListener(view -> {
             finish();
@@ -174,11 +176,15 @@ public class VotingActivity extends AppCompatActivity implements VotingPostInter
         int totalVotesInt;
         int realVotesInt = 0;
         int fakeVotesInt = 0;
-        if (post.getRealVotes() != null && !post.getRealVotes().isEmpty()) {
-            realVotesInt = Integer.parseInt(post.getRealVotes());
-        }
-        if (post.getFakeVotes() != null && !post.getFakeVotes().isEmpty()) {
-            fakeVotesInt = Integer.parseInt(post.getFakeVotes());
+        try {
+            if (post.getRealVotes() != null && !post.getRealVotes().isEmpty()) {
+                realVotesInt = Integer.parseInt(post.getRealVotes());
+            }
+            if (post.getFakeVotes() != null && !post.getFakeVotes().isEmpty()) {
+                fakeVotesInt = Integer.parseInt(post.getFakeVotes());
+            }
+        } catch (NumberFormatException e) {
+            Log.e("VotingActivity", "Error parsing vote counts", e);
         }
         realVotesInt = realVotesInt + 1;
         totalVotesInt = realVotesInt + fakeVotesInt;
@@ -224,11 +230,15 @@ public class VotingActivity extends AppCompatActivity implements VotingPostInter
         int totalVotesInt;
         int realVotesInt = 0;
         int fakeVotesInt = 0;
-        if (post.getRealVotes() != null && !post.getRealVotes().isEmpty()) {
-            realVotesInt = Integer.parseInt(post.getRealVotes());
-        }
-        if (post.getFakeVotes() != null && !post.getFakeVotes().isEmpty()) {
-            fakeVotesInt = Integer.parseInt(post.getFakeVotes());
+        try {
+            if (post.getRealVotes() != null && !post.getRealVotes().isEmpty()) {
+                realVotesInt = Integer.parseInt(post.getRealVotes());
+            }
+            if (post.getFakeVotes() != null && !post.getFakeVotes().isEmpty()) {
+                fakeVotesInt = Integer.parseInt(post.getFakeVotes());
+            }
+        } catch (NumberFormatException e) {
+            Log.e("VotingActivity", "Error parsing vote counts", e);
         }
         fakeVotesInt = fakeVotesInt + 1;
         totalVotesInt = realVotesInt + fakeVotesInt;
@@ -288,8 +298,8 @@ public class VotingActivity extends AppCompatActivity implements VotingPostInter
                 for (DataSnapshot snapshot : dataSnapshot.getChildren()){
                     Comments comments = snapshot.getValue(Comments.class);
                     commentsArrayList.add(comments);
-                    commentAdapter.notifyDataSetChanged();
                 }
+                commentAdapter.notifyDataSetChanged();
             }
 
             @Override
@@ -354,8 +364,12 @@ public class VotingActivity extends AppCompatActivity implements VotingPostInter
     @Override
     public void onLikedComment(Comments comments) {
         int likesCount = 0;
-        if (comments.getLikes() != null && !comments.getLikes().isEmpty()){
-            likesCount = Integer.parseInt(comments.getLikes());
+        try {
+            if (comments.getLikes() != null && !comments.getLikes().isEmpty()) {
+                likesCount = Integer.parseInt(comments.getLikes());
+            }
+        } catch (NumberFormatException e) {
+            Log.e("VotingActivity", "Error parsing likes count", e);
         }
         likesCount = likesCount + 1;
         String likes = String.valueOf(likesCount);

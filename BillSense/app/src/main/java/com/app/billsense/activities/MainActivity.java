@@ -42,20 +42,38 @@ public class MainActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         fbUtils = new FBUtils();
-        new PrefManager(this);
+        // PrefManager initialized in BillSenseApp.onCreate()
+
+        // Fast auto-redirect: skip splash entirely
+        if (PrefManager.getInstance().isLoggedIn()) {
+            startActivity(new Intent(MainActivity.this, HomeActivity.class));
+            finish();
+            return;
+        }
 
         binding.mainScanBtn.setOnClickListener(view -> {
-            if (PrefManager.getInstance().isLoggedIn()) {
-                showToast(MainActivity.this, "Already Logged In...");
-                startActivity(new Intent(MainActivity.this, HomeActivity.class));
-            }else {
-                startActivity(new Intent(MainActivity.this, LoginActivity.class));
-            }
+            startActivity(new Intent(MainActivity.this, LoginActivity.class));
         });
         askNotificationPermission();
-        FcmNotificationSender.init(this);
-        getAllCustomerTokens();
-        getAllTechnicianTokens();
+
+        // Auto-redirect to LoginActivity after 1.5s splash (user can also tap button)
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!isFinishing() && !PrefManager.getInstance().isLoggedIn()) {
+                startActivity(new Intent(MainActivity.this, LoginActivity.class));
+                finish();
+            }
+        }, 1500);
+
+        // Token loading on a true background thread — never blocks UI
+        new Thread(() -> {
+            try {
+                FcmNotificationSender.init(MainActivity.this);
+                getAllCustomerTokens();
+                getAllTechnicianTokens();
+            } catch (Exception e) {
+                android.util.Log.w("==MAIN", "Token loading failed (non-critical): " + e.getMessage());
+            }
+        }).start();
 
     }
 

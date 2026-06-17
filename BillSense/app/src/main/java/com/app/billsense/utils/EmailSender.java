@@ -3,11 +3,12 @@ package com.app.billsense.utils;
 import android.content.Context;
 import android.util.Log;
 
+import com.app.billsense.BuildConfig;
 import com.creativityapps.gmailbackgroundlibrary.BackgroundMail;
 
 public class EmailSender {
 
-    public static String email = "userdeveloper554@gmail.com", password = "mgca yrjd bplf cqiy";
+    public static String email = BuildConfig.EMAIL_SENDER_ADDRESS, password = BuildConfig.EMAIL_SENDER_PASSWORD;
 
     public interface EmailSendListener {
         void onEmailSentSuccess();
