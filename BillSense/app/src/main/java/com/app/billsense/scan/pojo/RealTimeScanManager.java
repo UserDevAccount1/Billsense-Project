@@ -81,37 +81,50 @@ public class RealTimeScanManager {
             try { webSocket.close(1000, "reconnect"); } catch (Exception ignored) {}
             webSocket = null;
         }
-        warmUp(); // wake Cloud Run (scale-to-zero) so the upgrade succeeds
-        String url = BASE_URL_WSS + endpoint;
-        Request request = new Request.Builder().url(url).build();
-        Log.d(TAG, "Connecting to WebSocket: " + url + " (attempt " + (openRetries + 1) + ")");
-        webSocket = client.newWebSocket(request, new SocketListener());
+        // KEY: warm up FIRST. A cold Cloud Run (scale-to-zero) holds /api/health
+        // until the container + 6 models are ready (~20s) then returns 200. We open
+        // the WebSocket only AFTER that, so the upgrade succeeds immediately instead
+        // of stalling and getting killed by the watchdog mid-cold-start.
+        Log.d(TAG, "Warming up server before WS (attempt " + (openRetries + 1) + ")…");
+        try {
+            Request warm = new Request.Builder()
+                    .url(com.app.billsense.BuildConfig.API_BASE_URL + "/api/health").build();
+            warmClient.newCall(warm).enqueue(new okhttp3.Callback() {
+                @Override public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
+                    Log.w(TAG, "Warm-up failed (" + e.getMessage() + ") — opening WS anyway");
+                    openSocket(endpoint);
+                }
+                @Override public void onResponse(@NonNull okhttp3.Call call, @NonNull Response resp) {
+                    Log.d(TAG, "Server warm (" + resp.code() + ") — opening WS");
+                    resp.close();
+                    openSocket(endpoint);
+                }
+            });
+        } catch (Exception e) {
+            openSocket(endpoint);
+        }
 
-        // readTimeout(0) means a cold-start stall never errors — so if the socket
-        // hasn't opened soon, warm up + retry; give up after MAX_OPEN_RETRIES.
+        // Overall safety: cold start + model load can take a while. If still not
+        // open after this window, retry the whole warm-then-connect; then give up.
         watchdog.removeCallbacksAndMessages(null);
         watchdog.postDelayed(() -> {
             if (opened) return;
             if (openRetries < MAX_OPEN_RETRIES) {
                 openRetries++;
-                Log.w(TAG, "WS open timed out — warming up + retry " + openRetries);
+                Log.w(TAG, "Connect watchdog — retry " + openRetries);
                 internalConnect(currentEndpoint);
             } else if (listener != null) {
-                listener.onScanError("Server is taking too long to respond. Check your connection and try again.");
+                listener.onScanError("Server is taking too long to respond. Please try again.");
             }
-        }, 14000);
+        }, 45000);
     }
 
-    /** Fire-and-forget ping to wake the Cloud Run ML service. */
-    private void warmUp() {
-        try {
-            Request r = new Request.Builder()
-                    .url(com.app.billsense.BuildConfig.API_BASE_URL + "/api/health").build();
-            warmClient.newCall(r).enqueue(new okhttp3.Callback() {
-                @Override public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) { }
-                @Override public void onResponse(@NonNull okhttp3.Call call, @NonNull Response resp) { resp.close(); }
-            });
-        } catch (Exception ignored) { }
+    private void openSocket(String endpoint) {
+        if (opened) return;
+        String url = BASE_URL_WSS + endpoint;
+        Request request = new Request.Builder().url(url).build();
+        Log.d(TAG, "Opening WebSocket: " + url);
+        webSocket = client.newWebSocket(request, new SocketListener());
     }
 
     /**
