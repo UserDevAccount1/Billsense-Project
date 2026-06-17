@@ -1,6 +1,7 @@
 # 06 — Status: what works, what's local-only, what's left
 
-Snapshot: 2026-05-16, HEAD `dae818a`. Update this when state changes.
+Snapshot: 2026-06-17, HEAD `0b6d2d7` (main consolidated from thesis-validator +
+TFLite reconciliation). Update this when state changes.
 
 ## Dashboard pages (all behind login `Billsense`/`admin`)
 
@@ -32,7 +33,7 @@ remote browser physically cannot reach the developer's localhost).
 | cPanel live site (https + http) | ✅ healthy, login works both schemes |
 | Firebase Hosting mirror | ✅ healthy |
 | cPanel Node proxy `/api/gemini/*` `/api/db/*` | ✅ healthy, SA + Gemini key configured |
-| Cloud Run ML API | ✅ healthy (cold `models_loaded:false` is normal) |
+| Cloud Run ML API | ❌ DOWN 503 — `BILLING_DISABLED` on `bill-sense-aec6b`; re-enable billing in console to restore (rev `00013` ready, fast-fails only because billing off) |
 | Local ML mirror (`localhost:8080`) | ✅ running this session (9.93 GB image pulled) — optional |
 | Firebase RTDB | ✅ read public, **write locked** (anon write → 401) |
 | CI/CD (push → cPanel) | ✅ clean-slate FTPS, reliable |

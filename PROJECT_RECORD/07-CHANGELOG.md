@@ -17,6 +17,37 @@
 Major deps deliberately NOT upgraded (need a tested upgrade pass):
 firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
+## Session history (2026-06)
+
+32. **Consolidate to `main` + reconcile TFLite offline-scan + diagnose Cloud Run
+    outage** (2026-06-17) — `main` was stale (HEAD `707a550`, 2026-03-21) with a
+    117-path uncommitted working tree from a separate ~3-month-old March effort.
+    (a) Preserved the entire dirty tree to branch `main-march-snapshot`
+    (commit `f120c09`, 116 files) so nothing was lost. (b) Fast-forwarded
+    `main` → `thesis-validator` (`25f50ce`) — clean, `main` was a strict
+    ancestor; all infra (deploy workflow, `tools/cpanel-mcp/`, `PROJECT_RECORD/`,
+    `AGENTS.md`) now on `main`. (c) Reconciled the **on-device TFLite offline-scan
+    feature** (TFLiteModelManager/Inference, 2 bundled `.tflite` models,
+    MLSettings/UploadScan/ScanHistory activities, `network_security_config.xml`)
+    from the snapshot onto `main` (commit `0b6d2d7`) — zero conflicts because
+    `thesis-validator` never touched `BillSense/app/`. (d) Admin-panel March views
+    (Detections/StandardScans/VideoScans/MultiScans/ScanResults/SessionReports +
+    7 competing same-path views) intentionally **left on the snapshot branch** —
+    the live `thesis-validator` admin panel stays authoritative; porting is a
+    separate product decision. (e) Build-verified: admin `npm run build` → `dist/`;
+    Android `assembleUserDebug`+`assembleAdminDebug` → both APKs (55.4 MB). Not
+    pushed (push auto-triggers cPanel CI/CD — deferred). **Secret rotation +
+    web/APK go-live deferred** to a deliberate follow-up.
+    **Cloud Run `billsense-api` is DOWN (503): root cause = `BILLING_DISABLED`
+    on project `bill-sense-aec6b`.** Container can't start with billing off →
+    every request fast-fails 503 (not an image/config/cold-start issue; service
+    reports Ready, traffic 100% on rev `00013`, 4cpu/4Gi/300s). The Firebase SA
+    cannot read logs (no Logs Viewer) or enable billing. **User console action
+    required:** re-enable billing at
+    https://console.cloud.google.com/billing/enable?project=bill-sense-aec6b ;
+    rev `00013` should serve again once restored (cold `models_loaded:false`
+    normal on first hit). gcloud account restored to `gabriel@…` after.
+
 ## Session history (2026-05, the build-out)
 
 Chronological summary of what was done and why. Commits are on `main`.
