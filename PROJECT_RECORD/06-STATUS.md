@@ -33,7 +33,7 @@ remote browser physically cannot reach the developer's localhost).
 | cPanel live site (https + http) | ✅ healthy, login works both schemes |
 | Firebase Hosting mirror | ✅ healthy |
 | cPanel Node proxy `/api/gemini/*` `/api/db/*` | ✅ healthy, SA + Gemini key configured |
-| Cloud Run ML API | ❌ DOWN 503 — `BILLING_DISABLED` on `bill-sense-aec6b`; re-enable billing in console to restore (rev `00013` ready, fast-fails only because billing off) |
+| Cloud Run ML API | ✅ RESTORED 2026-06-17 — billing re-linked (new account, ~$4 balance); rev `00013` healthy, scan round-trip OK (denom=500 detected, `models_loaded:true`). Was down on `BILLING_DISABLED` after the old billing account closed. Keep scale-to-zero to conserve balance |
 | Local ML mirror (`localhost:8080`) | ✅ running this session (9.93 GB image pulled) — optional |
 | Firebase RTDB | ✅ read public, **write locked** (anon write → 401) |
 | CI/CD (push → cPanel) | ✅ clean-slate FTPS, reliable |
