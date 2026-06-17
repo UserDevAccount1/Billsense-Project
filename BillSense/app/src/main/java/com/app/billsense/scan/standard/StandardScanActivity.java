@@ -86,7 +86,12 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     private enum UiState { READY_TO_CAPTURE, IMAGE_PREVIEW }
     private UiState currentUiState = UiState.READY_TO_CAPTURE;
     private Uri capturedImageUri; // Will hold the URI of the single captured image
-    private boolean areInfoCardsVisible = false;
+    private boolean areInfoCardsVisible = true; // show the live-analysis panel by default
+
+    // --- Cold-start handling: warm the server + auto-retry the WebSocket ---
+    private int wsRetryCount = 0;
+    private static final int MAX_WS_RETRIES = 6;
+    private final android.os.Handler retryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     // --- CameraX Components ---
     private ExecutorService cameraExecutor;
@@ -149,6 +154,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
                 bindCameraUseCases(cameraProvider);
+                warmUpServer(); // wake Cloud Run (scale-to-zero) before connecting
                 // Connect to the real-time standard scan endpoint
                 scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
             } catch (Exception e) {
@@ -166,13 +172,42 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         if (currentUiState == UiState.READY_TO_CAPTURE && imageAnalysis != null &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "onResume: Reconnecting WebSocket for live scan.");
+            warmUpServer();
             scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
+        }
+    }
+
+    /**
+     * Wake the Cloud Run ML service (scale-to-zero) so the real-time WebSocket
+     * upgrade succeeds and models start loading before the user points at a bill.
+     * Fire-and-forget; failures are non-fatal.
+     */
+    private void warmUpServer() {
+        try {
+            okhttp3.OkHttpClient c = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+            okhttp3.Request r = new okhttp3.Request.Builder()
+                    .url(com.app.billsense.BuildConfig.API_BASE_URL + "/api/health").build();
+            c.newCall(r).enqueue(new okhttp3.Callback() {
+                @Override public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) {
+                    Log.w(TAG, "Warm-up failed: " + e.getMessage());
+                }
+                @Override public void onResponse(@NonNull okhttp3.Call call, @NonNull okhttp3.Response resp) {
+                    Log.d(TAG, "Warm-up ok: " + resp.code());
+                    resp.close();
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "Warm-up error: " + e.getMessage());
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        retryHandler.removeCallbacksAndMessages(null);
         cameraExecutor.shutdown();
         scanManager.disconnect(); // Final cleanup
     }
@@ -325,6 +360,8 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // --- WebSocket Listener Callbacks ---
     @Override
     public void onConnectionOpen() {
+        wsRetryCount = 0;       // connected — clear cold-start retry state
+        canSendFrame = true;    // unstick frame sending
         runOnUiThread(() -> Toast.makeText(this, "Live analysis started...", Toast.LENGTH_SHORT).show());
     }
 
@@ -339,8 +376,23 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
 
     @Override
     public void onScanError(String error) {
-        runOnUiThread(() -> Toast.makeText(this, "Scan Error: " + error, Toast.LENGTH_SHORT).show());
         canSendFrame = true; // Allow trying again
+        // Cold-start: the WS upgrade can fail while Cloud Run spins up. Auto-retry
+        // (with warm-up) instead of dead-ending on a one-shot "Scan Error".
+        boolean connissue = error != null && error.toLowerCase().contains("connect");
+        if (connissue && currentUiState == UiState.READY_TO_CAPTURE && wsRetryCount < MAX_WS_RETRIES) {
+            wsRetryCount++;
+            runOnUiThread(() -> Toast.makeText(this,
+                    "Warming up scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
+            warmUpServer();
+            retryHandler.postDelayed(() -> {
+                if (currentUiState == UiState.READY_TO_CAPTURE) {
+                    scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
+                }
+            }, 4000);
+        } else {
+            runOnUiThread(() -> Toast.makeText(this, "Scan Error: " + error, Toast.LENGTH_SHORT).show());
+        }
     }
 
     @Override
