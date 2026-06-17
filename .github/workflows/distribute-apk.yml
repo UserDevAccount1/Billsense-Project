@@ -37,10 +37,13 @@ jobs:
           GS: ${{ secrets.GOOGLE_SERVICES_JSON }}
           LP: ${{ secrets.LOCAL_PROPERTIES }}
           SA: ${{ secrets.FIREBASE_APP_DIST_SA }}
+          SVC: ${{ secrets.SERVICE_ACCOUNT_JSON }}
         run: |
           printf '%s' "$GS" > BillSense/app/google-services.json
           printf '%s' "$LP" > BillSense/local.properties
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          mkdir -p BillSense/app/src/main/res/raw
+          printf '%s' "$SVC" > BillSense/app/src/main/res/raw/service_account.json
 
       - name: Build APK(s)
         working-directory: BillSense
