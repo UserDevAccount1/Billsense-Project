@@ -420,16 +420,30 @@ export default {
       ],
       apkBuilds: [
         {
-          id: 100, version: '1.4.1', versionCode: 6, variant: 'main', buildType: 'debug', status: 'testing',
-          buildDate: '2026-06-17T16:10:00', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          id: 101, version: '1.4.2', versionCode: 7, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-06-17T17:00:00', size: '55.4 MB', minSdk: 24, targetSdk: 35,
           packageName: 'com.app.billsense', isLatest: true,
           distribution: 'Firebase App Distribution',
-          downloadUrl: 'https://appdistribution.firebase.google.com/testerapps/1:340624938055:android:81d528ded5f924a23fcd62/releases/361qlb728f82o',
-          description: 'Latest test build distributed to the "testers" group via Firebase App Distribution. Billy now knows the BillSense research (Joy Canutab, University of the Cordilleras); on-device TFLite offline scanning reconciled; live Cloud Run backend verified. Install from the link on any device signed in as a tester.',
+          downloadUrl: 'https://appdistribution.firebase.google.com/testerapps/1:340624938055:android:81d528ded5f924a23fcd62/releases/4rli93dtin028',
+          description: 'Newest build (v1.4.2). Distributed via Firebase App Distribution to the testers group + userdeveloper554@gmail.com. Billy AI knows the BillSense research (Joy Canutab, University of the Cordilleras); on-device TFLite offline scanning; live Cloud Run backend verified. Install from the link on any device signed in as a tester.',
           changes: [
+            { type: 'feat', text: 'Version bump to 1.4.2 (7) — fresh distributable build' },
             { type: 'feat', text: 'Billy AI: research knowledge (researcher, university, methodology, SDG 16.4)' },
             { type: 'feat', text: 'On-device TFLite offline scanning (counterfeit + security models)' },
             { type: 'feat', text: 'Distributed via Firebase App Distribution (cloud, installable on live)' }
+          ],
+          dependencies: ['Firebase App Distribution', 'TFLite 2.14.0', 'CameraX 1.4.2']
+        },
+        {
+          id: 100, version: '1.4.1', versionCode: 6, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-06-17T16:10:00', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.app.billsense', isLatest: false,
+          distribution: 'Firebase App Distribution',
+          downloadUrl: 'https://appdistribution.firebase.google.com/testerapps/1:340624938055:android:81d528ded5f924a23fcd62/releases/361qlb728f82o',
+          description: 'First App Distribution test build (v1.4.1) — Billy research knowledge + on-device TFLite offline scanning.',
+          changes: [
+            { type: 'feat', text: 'Billy AI: research knowledge' },
+            { type: 'feat', text: 'On-device TFLite offline scanning' }
           ],
           dependencies: ['Firebase App Distribution', 'TFLite 2.14.0', 'CameraX 1.4.2']
         },
