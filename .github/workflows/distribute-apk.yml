@@ -69,16 +69,33 @@ jobs:
           PROJECT=bill-sense-aec6b
           USER_APP=1:340624938055:android:81d528ded5f924a23fcd62
           ADMIN_APP=1:340624938055:android:ad1fd12436348f633fcd62
+          PROXY=https://billsense.dev-environment.site
+          # $1=apk  $2=firebaseAppId  $3=dashboardVariant(main|admin)  $4=packageName
           fire () {
-            echo "Distributing $1"
-            firebase appdistribution:distribute "$1" \
-              --app "$2" --groups testers --project "$PROJECT" --release-notes "$NOTES"
+            echo "Distributing $3 ($4)"
+            OUT=$(firebase appdistribution:distribute "$1" --app "$2" --groups testers \
+                    --project "$PROJECT" --release-notes "$NOTES" 2>&1) || { echo "$OUT"; exit 1; }
+            echo "$OUT"
+            # Parse the new release's tester link + version, then record it to RTDB
+            # (apk_releases) so the LIVE APK Management page shows it automatically.
+            URL=$(printf '%s' "$OUT" | grep -oE 'https://appdistribution\.firebase\.google\.com/testerapps/[^ ?]+' | head -1)
+            VNUM=$(printf '%s' "$OUT" | grep -oiE 'release [0-9]+\.[0-9.]+' | grep -oE '[0-9]+\.[0-9.]+' | head -1)
+            VCODE=$(printf '%s' "$OUT" | grep -oiE 'release [0-9.]+ \([0-9]+\)' | grep -oE '\([0-9]+\)' | tr -dc '0-9')
+            SIZE=$(du -m "$1" | cut -f1)
+            KEY="rel_${3}_${VCODE:-0}_$(date +%s)"
+            JSON=$(jq -n --arg id "$KEY" --arg v "${VNUM:-?}" --argjson vc "${VCODE:-0}" \
+              --arg var "$3" --arg date "$(date -u +%Y-%m-%dT%H:%M:%S)" --arg size "${SIZE} MB" \
+              --arg pkg "$4" --arg url "$URL" --arg desc "$NOTES" \
+              '{path:("apk_releases/"+$id),data:{id:$id,version:$v,versionCode:$vc,variant:$var,buildType:"debug",status:"testing",buildDate:$date,size:$size,minSdk:24,targetSdk:35,packageName:$pkg,distribution:"Firebase App Distribution",downloadUrl:$url,description:$desc}}')
+            curl -sk -X POST "$PROXY/api/db/patch" -H 'Content-Type: application/json' -d "$JSON" \
+              && echo "✔ Recorded $KEY to the live dashboard" \
+              || echo "warn: could not record to dashboard (non-fatal) — distribution still succeeded"
           }
           if [ "$VARIANT" = "user" ] || [ "$VARIANT" = "both" ]; then
-            fire "BillSense/app/build/outputs/apk/user/debug/app-user-debug.apk" "$USER_APP"
+            fire "BillSense/app/build/outputs/apk/user/debug/app-user-debug.apk" "$USER_APP" "main" "com.app.billsense"
           fi
           if [ "$VARIANT" = "admin" ] || [ "$VARIANT" = "both" ]; then
-            fire "BillSense/app/build/outputs/apk/admin/debug/app-admin-debug.apk" "$ADMIN_APP"
+            fire "BillSense/app/build/outputs/apk/admin/debug/app-admin-debug.apk" "$ADMIN_APP" "admin" "com.admin.billsense"
           fi
 
       - name: Summary

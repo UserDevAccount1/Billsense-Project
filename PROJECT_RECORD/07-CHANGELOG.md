@@ -19,6 +19,29 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 ## Session history (2026-06)
 
+34. **APK distribution end-to-end + cloud Fire APK + project README** (2026-06-17,
+    follows entry 33) — closed out the release/distribution pipeline.
+    - **APK Management page** now serves distributed builds on the LIVE site:
+      Download/Install (opens Firebase App Distribution), a **Distribute/Share**
+      action (copy/email the install link), and live release records.
+    - **`apk_releases` RTDB root enabled** — added to the proxy allowlist in
+      `app.js.production` and **redeployed the cPanel Node backend** (UAPI). The
+      live page reads release records dynamically; seeded v1.4.1 + v1.4.2.
+    - **Cloud Fire APK workflow** (`.github/workflows/distribute-apk.yml`):
+      `workflow_dispatch` builds the chosen variant on a GitHub runner and
+      distributes via Firebase App Distribution — no localhost. Required secrets
+      GOOGLE_SERVICES_JSON, LOCAL_PROPERTIES, SERVICE_ACCOUNT_JSON, FIREBASE_APP_DIST_SA;
+      and the SA was granted `roles/firebaseappdistro.admin` (by the owner). The
+      workflow now **auto-writes the release to `apk_releases`** so every cloud fire
+      appears on the live dashboard automatically. Verified green (built+distributed
+      1.4.2(7) from CI).
+    - **Released v1.4.2 (7)** of the main app (versionName bump) to testers group +
+      `userdeveloper554@gmail.com`.
+    - **README.md** rewritten as a full project overview (was thesis-validator-only).
+    - Note: building/emulator buttons remain local-dev-only (need the SDK + the
+      `dev-server.mjs` on a dev machine); an online interactive emulator was scoped
+      out (would need a paid KVM VM or Appetize.io).
+
 33. **Cloud Run revived + model-weight backup + live feature work** (2026-06-17,
     follows entry 32) — went from "main consolidated" to fully live + new features.
     All changes pushed to `origin/main` (`UserDevAccount1/Billsense-Project`) and
