@@ -119,7 +119,7 @@ const DB_ROOTS = new Set([
   'Announcements', 'Bills', 'Detections', 'Notifications',
   'Standard Scan', 'Multi Scan', 'Video Scan', 'billy_analytics',
   'thesis_versions', 'thesis_panel_requests',
-  'Support', 'Trivia', 'Tutorials', 'Billy Chats'
+  'Support', 'Trivia', 'Tutorials', 'Billy Chats', 'apk_releases'
 ]);
 function rootAllowed(p) {
   const root = String(p || '').split('/')[0];

@@ -8,12 +8,14 @@
     <div v-if="isRemoteSite" class="local-only-banner">
       <span class="material-icons">desktop_windows</span>
       <div>
-        <strong>Local developer tool</strong>
-        <p>APK Management builds &amp; installs APKs via Gradle/ADB on <em>your</em> machine
-        through the dev-server (<code>localhost:3003</code>). A browser on the live site cannot
-        reach your machine, so builds are disabled here. To build: open the dashboard at
-        <code>http://localhost:3000</code> (Docker) or <code>http://localhost:3001</code> (Vite)
-        with <code>node dev-server.mjs</code> running.</p>
+        <strong>Building is local — distributing works here</strong>
+        <p><em>Building</em> APKs needs Gradle/ADB on your machine via the dev-server
+        (<code>localhost:3003</code>), so the build/emulator buttons are disabled on the live site.
+        But <strong>published releases below are installable from here</strong> — the
+        <span class="material-icons" style="font-size:.9em;vertical-align:middle">download</span>
+        button opens the Firebase App Distribution install page, which works on any device.
+        To build new APKs, open <code>http://localhost:3001</code> with <code>node dev-server.mjs</code>,
+        or use the cloud <code>Fire APK</code> GitHub Actions workflow.</p>
       </div>
     </div>
 
@@ -374,6 +376,8 @@ const DEV_SERVER = (() => {
   return 'http://localhost:3003'
 })()
 
+import { value } from '../services/db.js'
+
 export default {
   name: 'ApkManagement',
   data() {
@@ -416,9 +420,23 @@ export default {
       ],
       apkBuilds: [
         {
+          id: 100, version: '1.4.1', versionCode: 6, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-06-17T16:10:00', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.app.billsense', isLatest: true,
+          distribution: 'Firebase App Distribution',
+          downloadUrl: 'https://appdistribution.firebase.google.com/testerapps/1:340624938055:android:81d528ded5f924a23fcd62/releases/361qlb728f82o',
+          description: 'Latest test build distributed to the "testers" group via Firebase App Distribution. Billy now knows the BillSense research (Joy Canutab, University of the Cordilleras); on-device TFLite offline scanning reconciled; live Cloud Run backend verified. Install from the link on any device signed in as a tester.',
+          changes: [
+            { type: 'feat', text: 'Billy AI: research knowledge (researcher, university, methodology, SDG 16.4)' },
+            { type: 'feat', text: 'On-device TFLite offline scanning (counterfeit + security models)' },
+            { type: 'feat', text: 'Distributed via Firebase App Distribution (cloud, installable on live)' }
+          ],
+          dependencies: ['Firebase App Distribution', 'TFLite 2.14.0', 'CameraX 1.4.2']
+        },
+        {
           id: 1, version: '1.4.0', versionCode: 5, variant: 'main', buildType: 'debug', status: 'testing',
           buildDate: '2026-03-16T12:00:00', size: '35.8 MB', minSdk: 24, targetSdk: 35,
-          packageName: 'com.app.billsense', isLatest: true,
+          packageName: 'com.app.billsense', isLatest: false,
           description: 'Firebase ML models deployed to cloud. simple_model (12.3MB) and uv_model (10.9MB INT8) now available for on-device download. Hybrid cloud inference with 6 YOLOv8 models on Cloud Run + 2 TFLite models on Firebase ML. WebSocket real-time scanning, CameraX integration, and Docker local dev support.',
           changes: [
             { type: 'feat', text: 'simple_model TFLite deployed to Firebase ML (counterfeit detection, 7 classes)' },
@@ -506,6 +524,10 @@ export default {
     }
   },
   mounted() {
+    // Load any dynamically-published releases from RTDB (works on the live
+    // site). Falls back silently to the committed list if the apk_releases
+    // root isn't enabled on the proxy yet.
+    this.loadReleases()
     // Live site can't reach the developer's local dev-server — skip the
     // check that would only produce "Dev server offline" noise.
     if (this.isRemoteSite) return
@@ -520,6 +542,36 @@ export default {
       this.toastType = type
       if (this.toastTimer) clearTimeout(this.toastTimer)
       this.toastTimer = setTimeout(() => { this.toastMsg = '' }, duration)
+    },
+    // Pull published releases from RTDB `apk_releases` (if the proxy allows
+    // that root). Each record may carry a `downloadUrl` that works on the live
+    // site. Merged ahead of the committed records, de-duplicated by version+variant.
+    async loadReleases() {
+      try {
+        const data = await value('apk_releases')
+        if (!data || typeof data !== 'object') return
+        const rows = Object.entries(data).map(([k, v]) => ({
+          id: v.id || k,
+          version: v.version || '?', versionCode: v.versionCode || 0,
+          variant: v.variant || 'main', buildType: v.buildType || 'debug',
+          status: v.status || 'testing', buildDate: v.buildDate || new Date().toISOString(),
+          size: v.size || '-', minSdk: v.minSdk || 24, targetSdk: v.targetSdk || 35,
+          packageName: v.packageName || (v.variant === 'admin' ? 'com.admin.billsense' : 'com.app.billsense'),
+          isLatest: false, distribution: v.distribution || '', downloadUrl: v.downloadUrl || '',
+          description: v.description || '', changes: v.changes || [], dependencies: v.dependencies || []
+        }))
+        if (!rows.length) return
+        const seen = new Set(rows.map(r => `${r.version}|${r.variant}`))
+        const merged = [...rows, ...this.apkBuilds.filter(b => !seen.has(`${b.version}|${b.variant}`))]
+        // Recompute latest per variant by buildDate
+        ;['main', 'admin'].forEach(variant => {
+          const ofV = merged.filter(b => b.variant === variant)
+          ofV.forEach(b => (b.isLatest = false))
+          const newest = ofV.sort((a, b) => new Date(b.buildDate) - new Date(a.buildDate))[0]
+          if (newest) newest.isLatest = true
+        })
+        this.apkBuilds = merged
+      } catch { /* apk_releases not enabled yet — keep committed list */ }
     },
     async checkDevServer() {
       try {
@@ -728,6 +780,13 @@ export default {
 
     // ===== Download APK =====
     async downloadApk(build) {
+      // Published releases carry a real URL (Firebase App Distribution / Storage)
+      // that works from any browser — including the live site.
+      if (build.downloadUrl) {
+        window.open(build.downloadUrl, '_blank', 'noopener')
+        this.showToast('Opening install page…', 'success')
+        return
+      }
       if (this.devServerOnline) {
         // Map display variant to flavor variant
         const variant = build.variant === 'main' ? 'user' : build.variant
