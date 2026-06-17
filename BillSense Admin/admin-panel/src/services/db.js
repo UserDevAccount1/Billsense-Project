@@ -78,6 +78,30 @@ export async function remove(path) {
   return true
 }
 
+// Update specific fields on an existing node (RTDB PATCH = merge).
+export async function update(path, fields) {
+  return dbCall('patch', { path, data: fields })
+}
+
+// Firebase-style push id: 20-char, chronologically ordered, collision-resistant.
+// Lets us create children with the same key shape the mobile app generates,
+// using only the proxy's PATCH op (no server-side push needed).
+const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz'
+let _lastPushTime = 0
+const _lastRand = []
+export function pushId() {
+  let now = Date.now()
+  const dup = now === _lastPushTime
+  _lastPushTime = now
+  const ts = new Array(8)
+  for (let i = 7; i >= 0; i--) { ts[i] = PUSH_CHARS.charAt(now % 64); now = Math.floor(now / 64) }
+  let id = ts.join('')
+  if (!dup) { for (let i = 0; i < 12; i++) _lastRand[i] = Math.floor(Math.random() * 64) }
+  else { let i = 11; for (; i >= 0 && _lastRand[i] === 63; i--) _lastRand[i] = 0; _lastRand[i]++ }
+  for (let i = 0; i < 12; i++) id += PUSH_CHARS.charAt(_lastRand[i])
+  return id
+}
+
 export function timeAgo(input) {
   if (!input) return ''
   let ms
