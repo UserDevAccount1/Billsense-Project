@@ -404,33 +404,61 @@ export default {
       ],
       apkBuilds: [
         {
-          id: 1, version: '1.4.0', versionCode: 5, variant: 'main', buildType: 'debug', status: 'testing',
-          buildDate: '2026-03-16T12:00:00', size: '35.8 MB', minSdk: 24, targetSdk: 35,
+          id: 4, version: '1.5.0', versionCode: 6, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-03-22T12:11:00', size: '32.7 MB', minSdk: 24, targetSdk: 35,
           packageName: 'com.app.billsense', isLatest: true,
-          description: 'Firebase ML models deployed to cloud. simple_model (12.3MB) and uv_model (10.9MB INT8) now available for on-device download. Hybrid cloud inference with 6 YOLOv8 models on Cloud Run + 2 TFLite models on Firebase ML. WebSocket real-time scanning, CameraX integration, and Docker local dev support.',
+          description: 'Major update: Billy AI Agent integrated, 33 code audit fixes applied (security, performance, memory leaks), login optimization, Firebase listeners cleanup, email template fix, ProGuard-ready.',
           changes: [
-            { type: 'feat', text: 'simple_model TFLite deployed to Firebase ML (counterfeit detection, 7 classes)' },
-            { type: 'feat', text: 'uv_model TFLite deployed to Firebase ML (security features, INT8 quantized)' },
-            { type: 'feat', text: 'HybridInferenceManager — on-device + cloud fallback strategy' },
-            { type: 'feat', text: 'Standard, Multi, Video scan modes with WebSocket real-time detection' },
-            { type: 'feat', text: 'BuildConfig split: debug (Docker local) / release (Cloud Run)' },
-            { type: 'fix', text: 'Connection Health — Firebase ML checks Storage metadata' },
-            { type: 'perf', text: 'uv_model INT8 quantization: 42.7MB to 10.9MB' }
+            { type: 'feat', text: 'Billy AI Agent — local knowledge base + API fallback for currency guidance' },
+            { type: 'fix', text: 'Login delay reduced — removed redundant Firebase reads on HomeActivity' },
+            { type: 'fix', text: 'Memory leaks — all Firebase ValueEventListeners cleaned up in onDestroy()' },
+            { type: 'fix', text: 'Plaintext password comparison secured with hashing' },
+            { type: 'fix', text: 'Hardcoded credentials moved to BuildConfig from local.properties' },
+            { type: 'fix', text: 'StrictMode.permitAll() removed from CasesActivity' },
+            { type: 'fix', text: 'Email template fixed — removed "automotive needs" copy-paste text' },
+            { type: 'fix', text: 'notifyDataSetChanged() moved outside loops in HomeActivity, VotingActivity' },
+            { type: 'fix', text: 'Null checks added for getSupportActionBar() across 7 activities' },
+            { type: 'fix', text: 'assert replaced with proper null checks in LoginActivity, CasesActivity' },
+            { type: 'perf', text: 'Singleton OkHttpClient for CurrencyApiService — no more per-instance pools' }
           ],
-          dependencies: ['Firebase ML 24.2.3', 'TFLite 2.14.0', 'CameraX 1.4.2', 'OkHttp 4.12.0', 'Retrofit 2.9.0', 'Firebase DB 21.0.0']
+          dependencies: ['CameraX 1.4.2', 'OkHttp 4.12.0', 'Retrofit 2.9.0', 'Firebase DB 21.0.0', 'Glide 4.16.0', 'Material 1.12.0']
         },
         {
-          id: 2, version: '1.1.0', versionCode: 2, variant: 'admin', buildType: 'debug', status: 'testing',
-          buildDate: '2026-03-16T14:00:00', size: '19.8 MB', minSdk: 24, targetSdk: 35,
+          id: 3, version: '1.2.0', versionCode: 3, variant: 'admin', buildType: 'debug', status: 'testing',
+          buildDate: '2026-03-22T17:44:00', size: '32.7 MB', minSdk: 24, targetSdk: 35,
           packageName: 'com.admin.billsense', isLatest: true,
-          description: 'Admin panel app with web admin (Vue 3 Docker) integration. Includes dashboard, scan reports, user management, Connection Health monitoring, GitNexus code intelligence, APK Management, and App Testing pages.',
+          description: 'Admin app updated with matching Billy AI fixes, security improvements, and memory leak patches.',
+          changes: [
+            { type: 'feat', text: 'Billy AI Agent integrated in admin chat' },
+            { type: 'fix', text: 'All 33 audit fixes applied (security, performance, memory)' },
+            { type: 'fix', text: 'Credentials moved to BuildConfig' },
+            { type: 'fix', text: 'Firebase listeners cleanup in all activities' }
+          ],
+          dependencies: ['Firebase DB 21.0.0', 'Glide 4.16.0', 'Material 1.12.0']
+        },
+        {
+          id: 1, version: '1.4.0', versionCode: 5, variant: 'main', buildType: 'debug', status: 'archived',
+          buildDate: '2026-03-16T12:00:00', size: '35.8 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.app.billsense', isLatest: false,
+          description: 'Firebase ML models deployed to cloud. Hybrid cloud inference with 6 YOLOv8 models on Cloud Run + 2 TFLite models on Firebase ML.',
+          changes: [
+            { type: 'feat', text: 'simple_model TFLite deployed to Firebase ML' },
+            { type: 'feat', text: 'uv_model TFLite deployed to Firebase ML (INT8 quantized)' },
+            { type: 'feat', text: 'Standard, Multi, Video scan modes with WebSocket' },
+            { type: 'perf', text: 'uv_model INT8 quantization: 42.7MB to 10.9MB' }
+          ],
+          dependencies: ['Firebase ML 24.2.3', 'TFLite 2.14.0', 'CameraX 1.4.2', 'OkHttp 4.12.0']
+        },
+        {
+          id: 2, version: '1.1.0', versionCode: 2, variant: 'admin', buildType: 'debug', status: 'archived',
+          buildDate: '2026-03-16T14:00:00', size: '19.8 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.admin.billsense', isLatest: false,
+          description: 'Admin panel app with web admin (Vue 3 Docker) integration.',
           changes: [
             { type: 'feat', text: 'Web admin panel (Vue 3 + Nginx Docker) on port 3000' },
-            { type: 'feat', text: 'Connection Health page with 4 model pipeline checks' },
-            { type: 'feat', text: 'GitNexus code intelligence integration' },
-            { type: 'feat', text: 'APK Management page with version tracking' },
-            { type: 'feat', text: 'App Testing page with feature validation' },
-            { type: 'feat', text: 'Case management and voting posts moderation' }
+            { type: 'feat', text: 'Connection Health page' },
+            { type: 'feat', text: 'APK Management page' },
+            { type: 'feat', text: 'App Testing page' }
           ],
           dependencies: ['Firebase DB 21.0.0', 'Glide 4.16.0', 'Material 1.12.0']
         }

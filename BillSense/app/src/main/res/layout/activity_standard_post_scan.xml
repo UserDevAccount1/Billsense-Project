@@ -40,7 +40,7 @@
             android:visibility="invisible"
             tools:visibility="visible">
 
-            <!-- Overall Result Card -->
+            <!-- Status Badge Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -52,28 +52,126 @@
                     android:gravity="center"
                     android:orientation="vertical"
                     android:padding="20dp">
+
                     <TextView
-                        android:id="@+id/authenticity_result_text"
+                        android:id="@+id/authenticity_status_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textSize="28sp"
+                        android:textSize="32sp"
                         android:textStyle="bold"
                         tools:text="GENUINE" />
+
                     <TextView
-                        android:id="@+id/denomination_result_text"
+                        android:id="@+id/denomination_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:textSize="20sp"
-                        tools:text="1000 PHP" />
+                        android:textSize="18sp"
+                        android:textColor="#555555"
+                        tools:text="Detected: PHP 1000" />
+
+                    <!-- Confidence Score -->
                     <TextView
-                        android:id="@+id/confidence_result_text"
+                        android:id="@+id/confidence_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        tools:text="Authenticity Score: 88%" />
+
+                    <ProgressBar
+                        android:id="@+id/confidence_bar"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="12dp"
+                        android:layout_marginTop="6dp"
+                        android:max="100"
+                        android:progress="88" />
+
+                    <!-- Coverage -->
+                    <TextView
+                        android:id="@+id/coverage_text"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:textAllCaps="true"
                         android:textSize="14sp"
-                        tools:text="Confidence: HIGH" />
+                        android:textColor="#666666"
+                        tools:text="Feature Coverage: 71.4% (5/7 features detected)" />
+
+                    <!-- Recommendation -->
+                    <TextView
+                        android:id="@+id/recommendation_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:padding="10dp"
+                        android:background="#F0F0F0"
+                        android:textSize="13sp"
+                        android:textColor="#333333"
+                        tools:text="Recommendation: This bill appears genuine." />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Security Features Checklist Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/security_features_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        style="@style/TextAppearance.Material3.TitleMedium"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Security Features"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:id="@+id/security_features_layout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Scanned Image Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/scanned_image_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:visibility="gone"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/TextAppearance.Material3.TitleMedium"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:padding="16dp"
+                        android:paddingBottom="0dp"
+                        android:text="Scanned Image" />
+
+                    <ImageView
+                        android:id="@+id/scanned_image_view"
+                        android:layout_width="match_parent"
+                        android:layout_height="200dp"
+                        android:scaleType="fitCenter"
+                        android:padding="8dp"
+                        android:contentDescription="Scanned bill image" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -82,70 +180,31 @@
                 android:id="@+id/annotated_image_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="12dp"
+                android:visibility="gone"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
+
                     <TextView
                         style="@style/TextAppearance.Material3.TitleMedium"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:padding="16dp"
+                        android:paddingBottom="0dp"
                         android:text="Annotated Overview" />
+
                     <ImageView
                         android:id="@+id/annotated_image_view"
                         android:layout_width="match_parent"
                         android:layout_height="200dp"
-                        android:scaleType="centerCrop"
+                        android:scaleType="fitCenter"
+                        android:padding="8dp"
                         tools:src="@tools:sample/backgrounds/scenic"
                         android:contentDescription="Annotated scan result" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Analysis Details Card -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="2dp">
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-                    <TextView
-                        style="@style/TextAppearance.Material3.TitleMedium"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Analysis Details" />
-                    <TextView
-                        android:id="@+id/detected_features_count_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        tools:text="Detected Features: 8 of 9" />
-                    <TextView
-                        android:id="@+id/coverage_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="Overall Coverage: 88.9%" />
-                    <TextView
-                        android:id="@+id/reasons_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        tools:text="Reasons: All features verified." />
-                    <TextView
-                        android:id="@+id/features_summary_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textSize="12sp"
-                        tools:text="Summary: Verified watermark, serial number, etc." />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -154,7 +213,8 @@
                 android:id="@+id/quality_metrics_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="12dp"
+                android:visibility="gone"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
@@ -162,42 +222,53 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="16dp">
+
                     <TextView
                         style="@style/TextAppearance.Material3.TitleMedium"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Image Quality" />
+                        android:text="Image Quality"
+                        android:layout_marginBottom="8dp" />
 
-                    <TextView
-                        android:id="@+id/quality_status_text"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:id="@+id/quality_metrics_layout"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        tools:text="Status: GOOD (78.5)" />
-                    <TextView
-                        android:id="@+id/sharpness_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="Sharpness: 180.5" />
-                    <TextView
-                        android:id="@+id/brightness_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="Brightness: 130.2" />
-                    <TextView
-                        android:id="@+id/contrast_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="Contrast: 55.1" />
+                        android:orientation="vertical">
 
+                        <TextView
+                            android:id="@+id/quality_status_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            tools:text="Status: GOOD (78.5)" />
+                        <TextView
+                            android:id="@+id/sharpness_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            tools:text="Sharpness: 180.5" />
+                        <TextView
+                            android:id="@+id/brightness_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            tools:text="Brightness: 130.2" />
+                        <TextView
+                            android:id="@+id/contrast_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            tools:text="Contrast: 55.1" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Scan Metadata Card -->
+            <!-- Processing Info Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="12dp"
                 app:cardCornerRadius="12dp"
                 app:cardElevation="2dp">
                 <LinearLayout
@@ -205,33 +276,130 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:padding="16dp">
+
                     <TextView
                         style="@style/TextAppearance.Material3.TitleMedium"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Scan Metadata"/>
+                        android:text="Processing Info"
+                        android:layout_marginBottom="8dp" />
 
-                    <TextView
-                        android:id="@+id/scan_id_text"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:id="@+id/processing_info_layout"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textSize="12sp"
-                        tools:text="Scan ID: 1234-abcd-5678-efgh" />
-                    <TextView
-                        android:id="@+id/timestamp_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="12sp"
-                        tools:text="Timestamp: 2025-11-11T06:24:39Z" />
-                    <TextView
-                        android:id="@+id/processing_time_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="12sp"
-                        tools:text="Processing Time: 4.5s" />
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/scan_id_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            tools:text="Scan ID: 1234-abcd-5678-efgh" />
+                        <TextView
+                            android:id="@+id/timestamp_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            tools:text="Timestamp: 2025-11-11T06:24:39Z" />
+                        <TextView
+                            android:id="@+id/processing_time_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            tools:text="Processing Time: 4.5s" />
+                        <TextView
+                            android:id="@+id/model_info_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            tools:text="Model: YOLOv8 OBB" />
+                        <TextView
+                            android:id="@+id/analysis_type_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            tools:text="Analysis Type: standard_scan" />
+                    </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- Action Buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="24dp"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/retake_btn"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:text="Retake"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/save_btn"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:text="Save"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    app:backgroundTint="@color/colorPrimary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/share_btn"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:text="Share"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+
+            <!-- Legacy views (kept for backward compatibility with existing binding references) -->
+            <TextView
+                android:id="@+id/authenticity_result_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/confidence_result_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/denomination_result_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/detected_features_count_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/reasons_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/features_summary_text"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

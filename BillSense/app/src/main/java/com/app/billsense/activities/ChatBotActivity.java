@@ -18,9 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.app.billsense.R;
 import com.app.billsense.adapters.ChatAdapter;
-import com.app.billsense.api.pojo.AbacusChatService;
-import com.app.billsense.api.pojo.ApiResponse;
-import com.app.billsense.api.pojo.ApiResponseMessage;
+import com.app.billsense.api.pojo.BillyAIService;
 import com.app.billsense.databinding.ActivityChatBotBinding;
 import com.app.billsense.interfaces.FBInterface;
 import com.app.billsense.model.ChatMessage;
@@ -45,12 +43,12 @@ public class ChatBotActivity extends AppCompatActivity {
     private FBUtils fbUtils;
 
     private static final String TAG = "==ChatBotActivity";
-    private final String DEPLOYMENT_TOKEN = "bdd8c69699f6472fb582bdda61ba8947";
-    private final String DEPLOYMENT_ID = "f420900a0";
 
     private ChatAdapter chatAdapter;
     private List<ChatMessage> chatMessages;
     private int typingMessagePosition = -1;
+    private com.google.firebase.database.DatabaseReference chatHistoryRef;
+    private ValueEventListener chatHistoryListener;
 
     private final String WELCOME_MESSAGE_CONTENT = "\uD83D\uDC4B Hi there! I’m Billy — your AI assistant here at BillSense.\n" +
             "\n" +
@@ -293,45 +291,23 @@ public class ChatBotActivity extends AppCompatActivity {
     private void fetchChatResponseFromApi(String userMessage) {
         showTypingIndicator();
 
-        AbacusChatService.getChatResponseAsync(DEPLOYMENT_TOKEN, DEPLOYMENT_ID, userMessage,
-                new AbacusChatService.AbacusChatCallback() {
-                    @Override
-                    public void onSuccess(ApiResponse apiResponse) {
-                        runOnUiThread(() -> {
-                            String botResponseTextStr = "Sorry, I couldn't get a response. Please try again.";
-                            boolean validResponse = false;
-
-                            if (apiResponse != null && apiResponse.getResult() != null &&
-                                    apiResponse.getResult().getMessages() != null &&
-                                    !apiResponse.getResult().getMessages().isEmpty()) {
-                                StringBuilder botResponseTextBuilder = new StringBuilder();
-                                for (ApiResponseMessage msg : apiResponse.getResult().getMessages()) {
-                                    if (!msg.isUser() && msg.getText() != null && !msg.getText().isEmpty()) {
-                                        botResponseTextBuilder.append(msg.getText().trim());
-                                        validResponse = true;
-                                        break; // Take the first AI message
-                                    }
-                                }
-                                if (validResponse && botResponseTextBuilder.length() > 0) {
-                                    botResponseTextStr = botResponseTextBuilder.toString();
-                                }
-                            }
-                            updateBotMessageAfterTyping(botResponseTextStr); // This adds the final bot message
-                            if (validResponse) { // Only save if the response was considered valid
-                                saveChatMessagesToDatabase(userMessage, botResponseTextStr);
-                            }
-                        });
-                    }
-
-                    @Override
-                    public void onError(String errorMessage) {
-                        runOnUiThread(() -> {
-                            android.util.Log.e(TAG, "API Error: " + errorMessage);
-                            updateBotMessageAfterTyping("Error: " + errorMessage + ". Please try again.");
-                            Toast.makeText(ChatBotActivity.this, "API Error: " + errorMessage, Toast.LENGTH_LONG).show();
-                        });
-                    }
+        BillyAIService.getResponse(userMessage, new BillyAIService.BillyCallback() {
+            @Override
+            public void onSuccess(String response) {
+                runOnUiThread(() -> {
+                    updateBotMessageAfterTyping(response);
+                    saveChatMessagesToDatabase(userMessage, response);
                 });
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                runOnUiThread(() -> {
+                    Log.e(TAG, "Billy Error: " + errorMessage);
+                    updateBotMessageAfterTyping("I'm having trouble connecting right now. Please try again in a moment! \uD83D\uDE0A");
+                });
+            }
+        });
     }
 
     private void saveChatMessagesToDatabase(String userMessage, String botResponseMessage) {
@@ -351,9 +327,8 @@ public class ChatBotActivity extends AppCompatActivity {
         }
         String userChatPath = fbUtils.BILLY_CHAT_PATH + "/" + userId;
 
-        FirebaseDatabase.getInstance().getReference(userChatPath)
-                .orderByChild("timestamp")
-                .addValueEventListener(new ValueEventListener() {
+        chatHistoryRef = FirebaseDatabase.getInstance().getReference(userChatPath);
+        chatHistoryListener = new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                         runOnUiThread(() -> {
@@ -409,9 +384,17 @@ public class ChatBotActivity extends AppCompatActivity {
                             Toast.makeText(ChatBotActivity.this, "Failed to load chat history.", Toast.LENGTH_SHORT).show();
                         });
                     }
-                });
+                };
+        chatHistoryRef.orderByChild("timestamp").addValueEventListener(chatHistoryListener);
     }
 
-
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (chatHistoryRef != null && chatHistoryListener != null) {
+            chatHistoryRef.removeEventListener(chatHistoryListener);
+        }
+        binding = null;
+    }
 
 }

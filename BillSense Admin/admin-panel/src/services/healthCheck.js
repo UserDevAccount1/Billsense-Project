@@ -73,13 +73,12 @@ export async function checkGitHub() {
 }
 
 export async function checkClaudeCode() {
-  // Claude Code runs locally — check by verifying skill files exist
-  // This is a client-side approximation; actual check would need a local server
   return {
     status: 'configured',
     details: {
-      skills: ['claude-mem', 'superpowers', 'ui-ux-pro-max-skill', 'awesome-claude-code', 'context-mode', 'mobile-design'],
-      hooks: ['gsd-check-update', 'gsd-context-monitor', 'gsd-statusline']
+      skills: ['android-emulator-skill', 'android-architecture', 'android-testing', 'compose-ui', 'pdf', 'docx', 'xlsx', 'pptx'],
+      mcpServers: ['mobile (claude-in-mobile)', 'android (android-mcp-server)', 'cpanel-mcp', 'firebase', 'supabase', 'vercel', 'cloudflare'],
+      ide: 'VS Code + Android Studio Panda 2025.3.2'
     }
   }
 }
@@ -117,13 +116,40 @@ export async function checkMCP() {
 }
 
 export async function checkEmulator() {
-  // Emulator status — this is a local-only check
+  // Check dev-server for live emulator/device status
+  try {
+    const res = await fetch('http://localhost:3003/api/dev/emulator/status', { signal: AbortSignal.timeout(3000) })
+    if (res.ok) {
+      const data = await res.json()
+      const deviceCount = data.devices?.length || 0
+      const physicalDevices = data.devices?.filter(d => !d.isEmulator) || []
+      const emulators = data.devices?.filter(d => d.isEmulator) || []
+      return {
+        status: data.anyDevice ? 'running' : 'configured',
+        details: {
+          avd: data.avd || 'BillSense_Test',
+          emulatorRunning: data.running ? 'Yes' : 'No',
+          emulatorBooted: data.booted ? 'Yes' : 'No',
+          connectedDevices: deviceCount,
+          physicalDevices: physicalDevices.map(d => `${d.model} (${d.serial})`).join(', ') || 'None',
+          emulators: emulators.map(d => `${d.model} (${d.serial})`).join(', ') || 'None',
+          sdk: 'D:\\Software\\android studio\\Sdk',
+          ide: 'Android Studio Panda 2025.3.2 + VS Code',
+          apiLevels: 'API 33 (Android 13), API 36 (Android 16)'
+        }
+      }
+    }
+  } catch {
+    // Dev server not running — return static config
+  }
   return {
     status: 'configured',
     details: {
-      avd: 'Medium_Phone_API_36.1',
-      ide: 'VS Code (tasks.json)',
-      sdk: 'Android SDK 35'
+      avd: 'BillSense_Test',
+      ide: 'Android Studio Panda 2025.3.2 + VS Code',
+      sdk: 'D:\\Software\\android studio\\Sdk',
+      apiLevels: 'API 33 (Android 13), API 36 (Android 16)',
+      note: 'Start dev-server (port 3003) for live device status'
     }
   }
 }
@@ -216,8 +242,172 @@ export async function checkGitNexus() {
   }
 }
 
+export async function checkCPanel() {
+  const CPANEL_HOST = 'billsense.dev-environment.site'
+  try {
+    const start = performance.now()
+    // Check if cPanel domain is reachable via HTTPS
+    const res = await fetch(`https://${CPANEL_HOST}`, {
+      signal: AbortSignal.timeout(10000),
+      mode: 'no-cors'
+    })
+    const latency = Math.round(performance.now() - start)
+    return {
+      status: 'connected',
+      latency,
+      details: {
+        host: CPANEL_HOST,
+        port: 2083,
+        username: 'devenvir',
+        ssl: true,
+        mcpServer: 'cpanel-mcp (uvx)',
+        features: ['Email Management', 'Domain Config', 'File Manager', 'Database Admin']
+      }
+    }
+  } catch (e) {
+    // no-cors requests may throw but the domain could still be up
+    // Check if it's a CORS error (means the server IS responding)
+    if (e.name === 'TypeError' && !e.message.includes('Failed to fetch')) {
+      return {
+        status: 'connected',
+        details: {
+          host: CPANEL_HOST,
+          port: 2083,
+          username: 'devenvir',
+          ssl: true,
+          mcpServer: 'cpanel-mcp (uvx)',
+          features: ['Email Management', 'Domain Config', 'File Manager', 'Database Admin'],
+          note: 'Domain reachable (CORS restricted for direct checks)'
+        }
+      }
+    }
+    return {
+      status: 'offline',
+      error: e.message,
+      details: {
+        host: CPANEL_HOST,
+        port: 2083,
+        username: 'devenvir',
+        mcpServer: 'cpanel-mcp (uvx)'
+      }
+    }
+  }
+}
+
+// --- New Feature Health Checks ---
+
+export async function checkThesisValidator() {
+  try {
+    const snap = await get(ref(database, 'thesis_versions'))
+    if (snap.exists()) {
+      const versions = Object.keys(snap.val()).length
+      let totalWords = 0
+      const latest = Object.values(snap.val()).sort((a, b) => (b.versionNumber || 0) - (a.versionNumber || 0))[0]
+      if (latest?.sections) {
+        for (const sec of Object.values(latest.sections)) {
+          const content = typeof sec === 'object' ? (sec.content || '') : (sec || '')
+          totalWords += content.split(/\s+/).filter(w => w).length
+        }
+      }
+      // Check panel requests too
+      const prSnap = await get(ref(database, 'thesis_panel_requests'))
+      const panelCount = prSnap.exists() ? Object.keys(prSnap.val()).length : 0
+      return {
+        status: 'connected',
+        details: { versions, totalWords, panelRequests: panelCount, latestVersion: latest?.versionNumber || 1 }
+      }
+    }
+    return { status: 'warning', details: { note: 'No thesis data found in Firebase' } }
+  } catch (e) {
+    return { status: 'error', error: e.message }
+  }
+}
+
+export async function checkVectorSearch() {
+  // Vector search is client-side TF-IDF — always available if thesis data exists
+  try {
+    const snap = await get(ref(database, 'thesis_versions'))
+    if (snap.exists()) {
+      return { status: 'connected', details: { engine: 'TF-IDF Cosine Similarity', type: 'Client-side', chunking: 'Sentence-level', note: 'Indexes thesis content for semantic search' } }
+    }
+    return { status: 'warning', details: { note: 'No data to index — upload thesis content first' } }
+  } catch (e) {
+    return { status: 'error', error: e.message }
+  }
+}
+
+export async function checkBillyAgent() {
+  try {
+    const snap = await get(ref(database, 'Billy Chats'))
+    const chatCount = snap.exists() ? Object.keys(snap.val()).length : 0
+    return {
+      status: 'connected',
+      details: { chatSessions: chatCount, model: 'Billy AI Assistant', capabilities: 'Currency auth, app guidance, counterfeit detection education' }
+    }
+  } catch (e) {
+    if (e.message?.includes('Permission denied')) {
+      return { status: 'connected', details: { note: 'Auth required — agent is deployed' } }
+    }
+    return { status: 'error', error: e.message }
+  }
+}
+
+export async function checkScanResultsDB() {
+  try {
+    const paths = ['Standard Scan', 'Multi Scan', 'Video Scan']
+    let totalScans = 0
+    for (const path of paths) {
+      const snap = await get(ref(database, path))
+      if (snap.exists()) {
+        for (const userScans of Object.values(snap.val())) {
+          if (typeof userScans === 'object') totalScans += Object.keys(userScans).length
+        }
+      }
+    }
+    const detSnap = await get(ref(database, 'Detections'))
+    const detections = detSnap.exists() ? Object.keys(detSnap.val()).length : 0
+    return {
+      status: 'connected',
+      details: { totalScans, detections, paths: paths.join(', '), types: 'Standard, Multi, Video' }
+    }
+  } catch (e) {
+    return { status: 'error', error: e.message }
+  }
+}
+
+export async function checkUsersDB() {
+  try {
+    const snap = await get(ref(database, 'Users'))
+    if (snap.exists()) {
+      const users = Object.values(snap.val())
+      const verified = users.filter(u => u.status === 'verified').length
+      const pending = users.filter(u => u.status !== 'verified').length
+      return {
+        status: 'connected',
+        details: { totalUsers: users.length, verified, pending }
+      }
+    }
+    return { status: 'warning', details: { note: 'No users found' } }
+  } catch (e) {
+    return { status: 'error', error: e.message }
+  }
+}
+
+export async function checkSessionReports() {
+  try {
+    const snap = await get(ref(database, 'session_reports'))
+    const count = snap.exists() ? Object.keys(snap.val()).length : 0
+    return {
+      status: 'connected',
+      details: { totalReports: count, exports: 'DOCX, PDF', generator: 'AI Session Agent' }
+    }
+  } catch (e) {
+    return { status: 'error', error: e.message }
+  }
+}
+
 export async function runAllChecks() {
-  const [firebase, modelScanning, docker, github, claudeCode, mcp, emulator, firebaseML, gitNexus] =
+  const [firebase, modelScanning, docker, github, claudeCode, mcp, emulator, firebaseML, gitNexus, cpanel] =
     await Promise.allSettled([
       checkFirebase(),
       checkModelScanning(),
@@ -227,7 +417,8 @@ export async function runAllChecks() {
       checkMCP(),
       checkEmulator(),
       checkFirebaseML(),
-      checkGitNexus()
+      checkGitNexus(),
+      checkCPanel()
     ])
 
   return {
@@ -239,6 +430,7 @@ export async function runAllChecks() {
     mcp: mcp.value || { status: 'error', error: mcp.reason?.message },
     emulator: emulator.value || { status: 'error', error: emulator.reason?.message },
     firebaseML: firebaseML.value || { status: 'error', error: firebaseML.reason?.message },
-    gitNexus: gitNexus.value || { status: 'error', error: gitNexus.reason?.message }
+    gitNexus: gitNexus.value || { status: 'error', error: gitNexus.reason?.message },
+    cpanel: cpanel.value || { status: 'error', error: cpanel.reason?.message }
   }
 }

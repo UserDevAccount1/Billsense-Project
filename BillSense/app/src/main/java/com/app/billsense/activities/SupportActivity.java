@@ -32,8 +32,6 @@ import com.app.billsense.utils.Utils;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.database.DataSnapshot;
-
 import java.util.ArrayList;
 
 public class SupportActivity extends AppCompatActivity implements ConcernInterface {
@@ -56,9 +54,11 @@ public class SupportActivity extends AppCompatActivity implements ConcernInterfa
 
         toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.customer_support));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.customer_support));
+        }
 
         toolbar.setNavigationOnClickListener(view -> {
             finish();
@@ -105,23 +105,36 @@ public class SupportActivity extends AppCompatActivity implements ConcernInterfa
         concernAdapter = new ConcernAdapter(this, supportArrayList, this);
         binding.concernRv.setAdapter(concernAdapter);
         showProgressDialog(this);
-        fbUtils.getAllDataFromPath(fbUtils.SUPPORT_PATH, new FBInterface.OnFetchDataCallBack() {
+        fbUtils.fetchJsonFromPath(fbUtils.SUPPORT_PATH, new FBInterface.OnRestJsonFetchCallback() {
             @Override
-            public void onFetchDataSuccess(DataSnapshot dataSnapshot) {
+            public void onJsonFetchSuccess(String json) {
                 supportArrayList.clear();
-                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
-                    Support support = snapshot.getValue(Support.class);
-                    if (support != null) {
-                        if (support.getUserId().equals(userId)) {
-                            if (!support.getIsArchived()) {
-                                supportArrayList.add(support); // Add to master list
-                            }
+                try {
+                    org.json.JSONObject root = new org.json.JSONObject(json);
+                    java.util.Iterator<String> keys = root.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        org.json.JSONObject obj = root.getJSONObject(key);
+                        String objUserId = obj.optString("userId", "");
+                        boolean isArchived = obj.optBoolean("isArchived", false);
+                        if (objUserId.equals(userId) && !isArchived) {
+                            Support support = new Support();
+                            support.setId(key);
+                            support.setTicketNo(obj.optString("ticketNo", ""));
+                            support.setUserId(obj.optString("userId", ""));
+                            support.setUserName(obj.optString("userName", ""));
+                            support.setConcern(obj.optString("concern", ""));
+                            support.setStatus(obj.optString("status", "pending"));
+                            support.setArchived(isArchived);
+                            support.setDate(obj.optString("date", ""));
+                            supportArrayList.add(support);
                         }
                     }
+                } catch (Exception e) {
+                    android.util.Log.e("SupportActivity", "Parse error: " + e.getMessage());
                 }
                 if (concernAdapter != null) {
-                    concernAdapter.updateData(new ArrayList<>(supportArrayList)); // Update adapter with new master list
-                    // If a search query is active in searchEditText, re-apply it
+                    concernAdapter.updateData(new ArrayList<>(supportArrayList));
                     String currentQuery = binding.searchEditText.getText().toString();
                     if (!currentQuery.isEmpty()) {
                         concernAdapter.getFilter().filter(currentQuery);
@@ -131,22 +144,22 @@ public class SupportActivity extends AppCompatActivity implements ConcernInterfa
             }
 
             @Override
-            public void onDataNotFound() {
+            public void onJsonFetchEmpty() {
                 hideProgressDialog();
                 supportArrayList.clear();
                 if (concernAdapter != null) {
-                    concernAdapter.updateData(new ArrayList<>(supportArrayList)); // Update with empty list
+                    concernAdapter.updateData(new ArrayList<>(supportArrayList));
                 }
             }
 
             @Override
-            public void onFetchDataFailed(String errorMessage) {
+            public void onJsonFetchFailed(String error) {
                 hideProgressDialog();
                 supportArrayList.clear();
                 if (concernAdapter != null) {
-                    concernAdapter.updateData(new ArrayList<>(supportArrayList)); // Update with empty list
+                    concernAdapter.updateData(new ArrayList<>(supportArrayList));
                 }
-                showToast(SupportActivity.this, "Failed to fetch concerns: " + errorMessage);
+                showToast(SupportActivity.this, "Failed to load: " + error);
             }
         });
     }

@@ -114,11 +114,9 @@ public class VideoScanActivity extends AppCompatActivity implements RealTimeScan
     }
 
     private void requestPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activityResultLauncher.launch(new String[]{Manifest.permission.CAMERA});
-        } else {
-            activityResultLauncher.launch(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO});
-        }
+        // Always request both CAMERA and RECORD_AUDIO for video recording
+        // RECORD_AUDIO is still needed on API 33+ for video capture with audio
+        activityResultLauncher.launch(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO});
     }
 
     private void startCameraAndWebSocket() {
@@ -375,9 +373,9 @@ public class VideoScanActivity extends AppCompatActivity implements RealTimeScan
     @Override
     protected void onResume() {
         super.onResume();
-        // In VideoScan, we are always in a live analysis state.
-        // Reconnect if we have permission.
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+        // In VideoScan, reconnect only if camera is initialized and we have permission.
+        if (imageAnalysis != null &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "onResume: Reconnecting WebSocket for video scan.");
             scanManager.connect(RealTimeScanManager.ENDPOINT_VIDEO_SCAN);
         }

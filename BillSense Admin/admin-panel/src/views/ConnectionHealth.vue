@@ -129,6 +129,37 @@
           </div>
         </div>
       </div>
+      <!-- Feature Services Section -->
+      <div class="section-label" style="margin-top: 32px;">
+        <span class="material-icons">widgets</span>
+        Feature Services
+      </div>
+      <div class="conn-grid">
+        <div
+          v-for="svc in featureConnections"
+          :key="svc.id"
+          class="health-card"
+          :class="'status-' + svc.status"
+        >
+          <div class="card-header-row">
+            <div class="card-icon" :class="svc.id">
+              <span class="material-icons">{{ svc.icon }}</span>
+            </div>
+            <span class="status-badge" :class="svc.status">
+              <span class="status-dot"></span>
+              {{ svc.status }}
+            </span>
+          </div>
+          <div class="card-title">{{ svc.name }}</div>
+          <div class="card-subtitle">{{ svc.subtitle }}</div>
+          <div class="card-details">
+            <div class="detail-row" v-for="(value, key) in getDisplayDetails(svc.details)" :key="key">
+              <span class="detail-label">{{ formatKey(key) }}</span>
+              <span class="detail-value">{{ formatValue(value) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -137,7 +168,9 @@
 import { runModelConnectionChecks } from '../services/modelConnectionCheck.js'
 import {
   checkFirebase, checkGitHub, checkClaudeCode, checkMCP,
-  checkEmulator, checkGitNexus
+  checkEmulator, checkGitNexus, checkCPanel,
+  checkThesisValidator, checkVectorSearch, checkBillyAgent,
+  checkScanResultsDB, checkUsersDB, checkSessionReports
 } from '../services/healthCheck.js'
 
 const defaultConn = {
@@ -169,7 +202,14 @@ export default {
         mcp: { ...defaultSvc, id: 'mcp', name: 'MCP Servers', icon: 'hub', subtitle: 'Model Context Protocol connections' },
         claudeCode: { ...defaultSvc, id: 'claude', name: 'Claude Code', icon: 'smart_toy', subtitle: 'AI coding assistant + skills' },
         emulator: { ...defaultSvc, id: 'emulator', name: 'Android Emulator', icon: 'phone_android', subtitle: 'VS Code tasks + Android Studio AVD' },
-        gitNexus: { ...defaultSvc, id: 'gitnexus', name: 'GitNexus', icon: 'account_tree', subtitle: 'Zero-Server Code Intelligence Engine' }
+        gitNexus: { ...defaultSvc, id: 'gitnexus', name: 'GitNexus', icon: 'account_tree', subtitle: 'Zero-Server Code Intelligence Engine' },
+        cpanel: { ...defaultSvc, id: 'cpanel', name: 'cPanel', icon: 'dns', subtitle: 'billsense.dev-environment.site — Hosting & Email' },
+        thesis: { ...defaultSvc, id: 'thesis', name: 'Thesis Validator', icon: 'school', subtitle: 'Version control, panel requests, AI suggestions' },
+        vectorSearch: { ...defaultSvc, id: 'vector-search', name: 'Vector Search (TF-IDF)', icon: 'manage_search', subtitle: 'Document chunking and semantic search engine' },
+        billyAgent: { ...defaultSvc, id: 'billy', name: 'Billy AI Agent', icon: 'smart_toy', subtitle: 'Mobile app AI assistant for currency authentication' },
+        scanResults: { ...defaultSvc, id: 'scan-results', name: 'Scan Results DB', icon: 'document_scanner', subtitle: 'Standard, Multi, Video scan data from all users' },
+        usersDB: { ...defaultSvc, id: 'users-db', name: 'Users Database', icon: 'people', subtitle: 'Registered users, profiles, verification status' },
+        sessionReports: { ...defaultSvc, id: 'session-reports', name: 'Session Reports', icon: 'assessment', subtitle: 'AI-generated audit reports with DOCX/PDF export' }
       }
     }
   },
@@ -178,11 +218,14 @@ export default {
       return [this.connections.gcp, this.connections.docker, this.connections.mobile, this.connections.firebaseML]
     },
     devToolConnections() {
-      return Object.values(this.devTools)
+      return [this.devTools.firebase, this.devTools.github, this.devTools.mcp, this.devTools.claudeCode, this.devTools.emulator, this.devTools.gitNexus, this.devTools.cpanel]
+    },
+    featureConnections() {
+      return [this.devTools.thesis, this.devTools.vectorSearch, this.devTools.billyAgent, this.devTools.scanResults, this.devTools.usersDB, this.devTools.sessionReports]
     },
     allStatuses() {
       const pipeline = this.pipelineConnections.map(c => c.overall)
-      const devStatuses = this.devToolConnections.map(s => {
+      const devStatuses = [...this.devToolConnections, ...this.featureConnections].map(s => {
         if (['healthy', 'connected', 'running', 'configured', 'deployed', 'available'].includes(s.status)) return 'healthy'
         if (['warning', 'no-models', 'not-found', 'stopped', 'partial'].includes(s.status)) return 'warning'
         if (['error', 'offline', 'disconnected', 'not-configured', 'unavailable'].includes(s.status)) return 'error'
@@ -205,7 +248,8 @@ export default {
       this.loading = true
       try {
         // Run pipeline and dev tool checks in parallel
-        const [pipelineResults, firebase, github, mcp, claudeCode, emulator, gitNexus] =
+        const [pipelineResults, firebase, github, mcp, claudeCode, emulator, gitNexus, cpanel,
+               thesis, vectorSearch, billy, scanDB, usersDB, sessionRpts] =
           await Promise.allSettled([
             runModelConnectionChecks(),
             checkFirebase(),
@@ -213,7 +257,14 @@ export default {
             checkMCP(),
             checkClaudeCode(),
             checkEmulator(),
-            checkGitNexus()
+            checkGitNexus(),
+            checkCPanel(),
+            checkThesisValidator(),
+            checkVectorSearch(),
+            checkBillyAgent(),
+            checkScanResultsDB(),
+            checkUsersDB(),
+            checkSessionReports()
           ])
 
         // Update pipeline connections
@@ -250,6 +301,13 @@ export default {
         updateSvc('claudeCode', claudeCode)
         updateSvc('emulator', emulator)
         updateSvc('gitNexus', gitNexus)
+        updateSvc('cpanel', cpanel)
+        updateSvc('thesis', thesis)
+        updateSvc('vectorSearch', vectorSearch)
+        updateSvc('billyAgent', billy)
+        updateSvc('scanResults', scanDB)
+        updateSvc('usersDB', usersDB)
+        updateSvc('sessionReports', sessionRpts)
 
         this.lastCheck = new Date().toLocaleTimeString()
       } catch (e) {
@@ -411,6 +469,7 @@ export default {
 .card-icon.claude { background: rgba(196, 130, 89, 0.15); color: #C48259; }
 .card-icon.emulator { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
 .card-icon.gitnexus { background: rgba(99, 102, 241, 0.15); color: #6366F1; }
+.card-icon.cpanel { background: rgba(255, 106, 0, 0.15); color: #FF6A00; }
 
 /* Responsive */
 @media (max-width: 900px) {

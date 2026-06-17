@@ -43,9 +43,12 @@ import com.bumptech.glide.Glide;
 import com.github.dhaval2404.imagepicker.ImagePicker;
 import com.github.dhaval2404.imagepicker.constant.ImageProvider;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.firebase.database.DataSnapshot;
+import com.google.gson.Gson;
+
+import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Locale;
 
 public class CompareBillActivity extends AppCompatActivity {
@@ -225,36 +228,50 @@ public class CompareBillActivity extends AppCompatActivity {
     }
 
     private void getAllBills() {
-        fbUtils.getAllDataFromPath(fbUtils.BILLS_PATH, new FBInterface.OnFetchDataCallBack() {
+        // Use pure REST fetch to avoid Firebase SDK hangs
+        fbUtils.fetchJsonFromPath(fbUtils.BILLS_PATH, new FBInterface.OnRestJsonFetchCallback() {
             @Override
-            public void onFetchDataSuccess(DataSnapshot dataSnapshot) {
+            public void onJsonFetchSuccess(String jsonBody) {
                 billsArrayList.clear();
-                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
-                    Bills bills = snapshot.getValue(Bills.class);
-                    billsArrayList.add(bills);
+                try {
+                    Gson gson = new Gson();
+                    JSONObject json = new JSONObject(jsonBody);
+                    Iterator<String> keys = json.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        Object child = json.get(key);
+                        if (child instanceof JSONObject) {
+                            Bills bill = gson.fromJson(child.toString(), Bills.class);
+                            if (bill != null) {
+                                billsArrayList.add(bill);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("CompareBillActivity", "Failed to parse bills JSON: " + e.getMessage());
                 }
+
                 if (!billsArrayList.isEmpty()) {
-                    currentBillIndex = 0; // Reset to first bill
+                    currentBillIndex = 0;
                     loadBillImage(currentBillIndex);
-                    updateNextBillButtonState(); // Update button state after loading
+                    updateNextBillButtonState();
                 } else {
-                    // Handle case where no bills are found after fetch
-                    binding.imageViewOriginal.setImageDrawable(null); // Clear image view
+                    binding.imageViewOriginal.setImageDrawable(null);
                     showToast(CompareBillActivity.this, "No bills found.");
-                    updateNextBillButtonState(); // Update button state
+                    updateNextBillButtonState();
                 }
             }
 
             @Override
-            public void onDataNotFound() {
-                billsArrayList.clear(); // Ensure list is clear
+            public void onJsonFetchEmpty() {
+                billsArrayList.clear();
                 binding.imageViewOriginal.setImageDrawable(null);
-                showToast(CompareBillActivity.this, "No Bills Found from path.");
+                showToast(CompareBillActivity.this, "No Bills Found.");
                 updateNextBillButtonState();
             }
 
             @Override
-            public void onFetchDataFailed(String errorMessage) {
+            public void onJsonFetchFailed(String errorMessage) {
                 showToast(CompareBillActivity.this, errorMessage);
                 updateNextBillButtonState();
             }

@@ -2,7 +2,6 @@ package com.app.billsense.utils;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.util.Log;
 
 public class PrefManager {
 
@@ -12,30 +11,24 @@ public class PrefManager {
 
     private static final String KEY_IS_LOGGED_IN = "isLoggedIn_user";
 
-    public Context context;
-    public static PrefManager instance = new PrefManager();
+    private final Context context;
+    private static PrefManager instance;
+
+    public static synchronized void init(Context context) {
+        if (instance == null) {
+            instance = new PrefManager(context.getApplicationContext());
+        }
+    }
 
     public static PrefManager getInstance() {
-        if (usersPrefs == null && instance.context == null) {
-            Log.w("PrefManager", "PrefManager.getInstance() called before initialization with context. This might lead to issues.");
-            // Consider throwing an IllegalStateException here if strict initialization is required.
-            // throw new IllegalStateException("PrefManager not initialized. Call new PrefManager(context) first.");
+        if (instance == null) {
+            throw new IllegalStateException("PrefManager not initialized. Call init() in Application.onCreate()");
         }
         return instance;
     }
 
-    public static void setInstance(PrefManager instance) {
-        PrefManager.instance = instance;
-    }
-
-    public PrefManager() {
-    }
-
-    public PrefManager(Context context) {
-        if (context == null) {
-            return; // Avoid further processing if context is null
-        }
-        this.context = context.getApplicationContext();
+    private PrefManager(Context context) {
+        this.context = context;
         usersPrefs = this.context.getSharedPreferences(PREF_USERS, Context.MODE_PRIVATE);
     }
 
@@ -70,4 +63,3 @@ public class PrefManager {
         editor.apply();
     }
 }
-

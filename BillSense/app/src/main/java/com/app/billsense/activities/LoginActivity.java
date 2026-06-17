@@ -8,12 +8,13 @@ import static com.app.billsense.utils.Utils.showToast;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.InputType;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.app.billsense.R;
 import com.app.billsense.databinding.ActivityLoginBinding;
@@ -22,8 +23,12 @@ import com.app.billsense.model.Users;
 import com.app.billsense.utils.EmailSender;
 import com.app.billsense.utils.FBUtils;
 import com.app.billsense.utils.InputValidator;
+import com.app.billsense.utils.PasswordUtils;
 import com.app.billsense.utils.PrefManager;
 import com.app.billsense.utils.Utils;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.database.DataSnapshot;
 
 public class LoginActivity extends AppCompatActivity {
@@ -42,12 +47,8 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void setupClickListeners() {
-        binding.forgotPassIv.setOnClickListener(v -> {
-
-        });
-        binding.forgotPassTv.setOnClickListener(v -> {
-
-        });
+        binding.forgotPassIv.setOnClickListener(v -> showForgotPasswordDialog());
+        binding.forgotPassTv.setOnClickListener(v -> showForgotPasswordDialog());
 
         binding.loginIv.setOnClickListener(v -> {
             validateAndLogin();
@@ -85,12 +86,29 @@ public class LoginActivity extends AppCompatActivity {
             public void onLoginSuccess(DataSnapshot userSnapshot) {
                 hideProgressDialog();
                 Users users = userSnapshot.getValue(Users.class);
-                assert users != null;
+                if (users == null) return;
                 showToast(LoginActivity.this, "Logged in Successfully");
                 PrefManager.getInstance().saveUserData(users.getId(), users.getEmail(),
                         users.getName());
                 startActivity(new Intent(LoginActivity.this, HomeActivity.class));
                 finish();
+            }
+
+            @Override
+            public void onLoginSuccessDirect(String userId, String userEmail, String name) {
+                android.util.Log.d("==LOGIN", "onLoginSuccessDirect: navigating to HomeActivity");
+                if (isFinishing() || isDestroyed()) {
+                    android.util.Log.w("==LOGIN", "Activity already finishing, skipping navigation");
+                    return;
+                }
+                hideProgressDialog();
+                showToast(LoginActivity.this, "Logged in Successfully");
+                runOnUiThread(() -> {
+                    Intent intent = new Intent(LoginActivity.this, HomeActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
+                    finish();
+                });
             }
 
             @Override
@@ -110,7 +128,7 @@ public class LoginActivity extends AppCompatActivity {
             public void onVerificationCodeNeeded(DataSnapshot userSnapshot) {
                 hideProgressDialog();
                 Users users = userSnapshot.getValue(Users.class);
-                assert users != null;
+                if (users == null) return;
                 String verificationCode = Utils.generateUniqueCode();
                 String body = "Dear " + users.getName() + " ,\n" +
                         "\n" +
@@ -123,7 +141,7 @@ public class LoginActivity extends AppCompatActivity {
                         "If you did not request this code or have any questions, please reach out to our support team at support email" +
                         getString(R.string.support_email) + " or phone number " + getString(R.string.support_phone) + ".\n" +
                         "\n" +
-                        "Thank you for choosing "+ getString(R.string.app_name)+". We look forward to serving your automotive needs.\n" +
+                        "Thank you for choosing "+ getString(R.string.app_name)+". We look forward to helping you detect counterfeit currency..\n" +
                         "\n" +
                         "Best regards,\n" +
                         getString(R.string.app_name) +" IT Department";
@@ -158,5 +176,179 @@ public class LoginActivity extends AppCompatActivity {
                         });
             }
         });
+    }
+
+    // ---- Forgot Password Flow ----
+
+    private void showForgotPasswordDialog() {
+        TextInputLayout emailLayout = new TextInputLayout(this);
+        emailLayout.setHint(getString(R.string.email_address));
+        emailLayout.setPadding(48, 16, 48, 0);
+        TextInputEditText emailInput = new TextInputEditText(emailLayout.getContext());
+        emailInput.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        emailLayout.addView(emailInput);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.forgot_password_title)
+                .setMessage(R.string.enter_your_email)
+                .setView(emailLayout)
+                .setPositiveButton(R.string.send_reset_code, (dialog, which) -> {
+                    String resetEmail = emailInput.getText() != null
+                            ? emailInput.getText().toString().trim() : "";
+                    if (!InputValidator.isValidEmail(resetEmail)) {
+                        showToast(this, getString(R.string.invalid_email_address));
+                        return;
+                    }
+                    sendPasswordResetCode(resetEmail);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void sendPasswordResetCode(String resetEmail) {
+        showProgressDialog(this);
+        String resetCode = Utils.generateUniqueCode();
+
+        fbUtils.storePasswordResetCode(fbUtils.USERS_PATH, resetEmail, resetCode,
+                new FBInterface.OnPasswordResetCallBack() {
+                    @Override
+                    public void onResetCodeStored(String userId) {
+                        // Send the code via email
+                        String body = "Dear User,\n\n" +
+                                "You requested a password reset for your " +
+                                getString(R.string.app_name) + " account.\n\n" +
+                                "Your password reset code is: " + resetCode + "\n\n" +
+                                "If you did not request this, please ignore this email.\n\n" +
+                                "Best regards,\n" +
+                                getString(R.string.app_name) + " IT Department";
+
+                        EmailSender.sendEmail(LoginActivity.this, resetEmail,
+                                getString(R.string.app_name) + " Password Reset Code",
+                                body,
+                                new EmailSender.EmailSendListener() {
+                                    @Override
+                                    public void onEmailSentSuccess() {
+                                        hideProgressDialog();
+                                        showToast(LoginActivity.this,
+                                                "Reset code sent to your email");
+                                        showVerifyResetCodeDialog(userId);
+                                    }
+
+                                    @Override
+                                    public void onEmailSentFailure(String errorMessage) {
+                                        hideProgressDialog();
+                                        showToast(LoginActivity.this, errorMessage);
+                                    }
+                                });
+                    }
+
+                    @Override
+                    public void onPasswordResetSuccess() {
+                        // Not used in this step
+                    }
+
+                    @Override
+                    public void onPasswordResetFailed(String errorMessage) {
+                        hideProgressDialog();
+                        showToast(LoginActivity.this, "Error: " + errorMessage);
+                    }
+                });
+    }
+
+    private void showVerifyResetCodeDialog(String userId) {
+        TextInputLayout codeLayout = new TextInputLayout(this);
+        codeLayout.setHint(getString(R.string.reset_code));
+        codeLayout.setPadding(48, 16, 48, 0);
+        TextInputEditText codeInput = new TextInputEditText(codeLayout.getContext());
+        codeInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        codeLayout.addView(codeInput);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.verify_code)
+                .setMessage(R.string.enter_reset_code)
+                .setView(codeLayout)
+                .setCancelable(false)
+                .setPositiveButton(R.string.verify_code, (dialog, which) -> {
+                    String code = codeInput.getText() != null
+                            ? codeInput.getText().toString().trim() : "";
+                    if (code.isEmpty()) {
+                        showToast(this, "Please enter the reset code");
+                        return;
+                    }
+                    showNewPasswordDialog(userId, code);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void showNewPasswordDialog(String userId, String resetCode) {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(48, 16, 48, 0);
+
+        TextInputLayout passwordLayout = new TextInputLayout(this);
+        passwordLayout.setHint(getString(R.string.new_password));
+        passwordLayout.setPasswordVisibilityToggleEnabled(true);
+        TextInputEditText passwordInput = new TextInputEditText(passwordLayout.getContext());
+        passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordLayout.addView(passwordInput);
+        layout.addView(passwordLayout);
+
+        TextInputLayout confirmLayout = new TextInputLayout(this);
+        confirmLayout.setHint(getString(R.string.confirm_new_password));
+        confirmLayout.setPasswordVisibilityToggleEnabled(true);
+        TextInputEditText confirmInput = new TextInputEditText(confirmLayout.getContext());
+        confirmInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        confirmLayout.addView(confirmInput);
+        layout.addView(confirmLayout);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.set_new_password)
+                .setView(layout)
+                .setCancelable(false)
+                .setPositiveButton(R.string.reset_password, (dialog, which) -> {
+                    String newPass = passwordInput.getText() != null
+                            ? passwordInput.getText().toString().trim() : "";
+                    String confirmPass = confirmInput.getText() != null
+                            ? confirmInput.getText().toString().trim() : "";
+
+                    if (!InputValidator.isValidPassword(newPass)) {
+                        showToast(this, getString(R.string.invalid_password));
+                        return;
+                    }
+                    if (!newPass.equals(confirmPass)) {
+                        showToast(this, getString(R.string.password_not_matched));
+                        return;
+                    }
+
+                    resetPassword(userId, resetCode, newPass);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void resetPassword(String userId, String resetCode, String newPassword) {
+        showProgressDialog(this);
+        fbUtils.verifyResetCodeAndUpdatePassword(fbUtils.USERS_PATH, userId, resetCode,
+                newPassword,
+                new FBInterface.OnPasswordResetCallBack() {
+                    @Override
+                    public void onResetCodeStored(String userId) {
+                        // Not used in this step
+                    }
+
+                    @Override
+                    public void onPasswordResetSuccess() {
+                        hideProgressDialog();
+                        showToast(LoginActivity.this,
+                                "Password reset successfully! Please login with your new password.");
+                    }
+
+                    @Override
+                    public void onPasswordResetFailed(String errorMessage) {
+                        hideProgressDialog();
+                        showToast(LoginActivity.this, "Error: " + errorMessage);
+                    }
+                });
     }
 }

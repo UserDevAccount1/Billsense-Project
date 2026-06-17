@@ -795,7 +795,7 @@ export default {
   mounted() {
     this.checkDevServer()
     this.checkEmulatorStatus()
-    this.loadTesters()
+    this.loadTesters(true)
     this.loadNetworkInfo()
     // Poll connected devices + tester status every 4s for real-time updates
     this._devicePollTimer = setInterval(() => {
@@ -1139,16 +1139,20 @@ export default {
     },
 
     // ===== Device Management =====
-    async loadTesters() {
+    async loadTesters(silent = false) {
       this.loadingTesters = true
       try {
         const res = await fetch(`${DEV_SERVER}/api/dev/distribute/testers`, { signal: AbortSignal.timeout(10000) })
         if (res.ok) {
           const data = await res.json()
           this.deviceTesters = data.testers || []
+        } else if (!silent) {
+          this.showToast('Failed to load testers', 'error', 'error')
         }
       } catch (err) {
-        this.showToast('Failed to load testers', 'error', 'error')
+        if (!silent) {
+          console.warn('Testers load failed:', err.message)
+        }
       } finally {
         this.loadingTesters = false
       }

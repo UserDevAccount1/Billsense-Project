@@ -25,12 +25,14 @@ import { createReadStream, statSync, existsSync, readdirSync, readFileSync, writ
 import path from 'node:path'
 
 const PORT = 3003
-const ANDROID_HOME = path.join(process.env.LOCALAPPDATA || '', 'Android', 'Sdk')
+// Use D:\Software\AndroidSdk first (moved SDK), fallback to env
+const _candidates = ['D:\\Software\\AndroidSdk', process.env.ANDROID_HOME, 'C:\\Android\\Sdk']
+const ANDROID_HOME = _candidates.find(p => p && existsSync(path.join(p, 'platform-tools', 'adb.exe'))) || 'D:\\Software\\AndroidSdk'
 const ADB = path.join(ANDROID_HOME, 'platform-tools', 'adb.exe')
 const EMULATOR_BIN = path.join(ANDROID_HOME, 'emulator', 'emulator.exe')
-const AVD_NAME = 'Medium_Phone_API_36.1'
-const PROJECT_ROOT = 'D:\\PROJECTS\\BillSense\\BillSense'
-const JAVA_HOME = path.join(process.env.USERPROFILE || '', '.gradle', 'jdks', 'eclipse_adoptium-17-amd64-windows.2')
+const AVD_NAME = 'BillSense_Test'
+const PROJECT_ROOT = 'D:\\Github\\Billsense-Project\\BillSense'
+const JAVA_HOME = process.env.JAVA_HOME || 'C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot'
 const APK_BASE = path.join(PROJECT_ROOT, 'app', 'build', 'outputs', 'apk')
 
 // Flavor → Gradle task + applicationId mapping

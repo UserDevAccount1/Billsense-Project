@@ -1,0 +1,383 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F4F6F6"
+    android:fitsSystemWindows="true"
+    tools:context=".scan.standard.UploadScanActivity">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:elevation="4dp"
+            app:layout_scrollFlags="scroll|enterAlways"
+            app:navigationIconTint="@color/white"
+            app:title="Upload &amp; Scan"
+            app:titleTextColor="@color/white" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Image Preview Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/image_preview_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:gravity="center">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Upload Bill Image"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_color_black"
+                        android:fontFamily="@font/poppins_bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:id="@+id/instruction_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Select an image of a Philippine banknote from your gallery to analyze its authenticity."
+                        android:textSize="13sp"
+                        android:textColor="#666666"
+                        android:fontFamily="@font/poppins"
+                        android:gravity="center"
+                        android:layout_marginBottom="16dp" />
+
+                    <!-- Image Preview Container -->
+                    <FrameLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="200dp"
+                        android:layout_marginBottom="16dp"
+                        android:background="@drawable/rounded_bg">
+
+                        <ImageView
+                            android:id="@+id/placeholder_icon"
+                            android:layout_width="64dp"
+                            android:layout_height="64dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/scan_bill"
+                            android:alpha="0.3"
+                            android:contentDescription="Upload placeholder" />
+
+                        <ImageView
+                            android:id="@+id/selected_image_view"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerInside"
+                            android:visibility="gone"
+                            android:contentDescription="Selected bill image"
+                            tools:visibility="visible" />
+
+                    </FrameLayout>
+
+                    <!-- Action Buttons -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/select_image_button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="8dp"
+                            android:text="Select Image"
+                            android:textAllCaps="false"
+                            app:icon="@drawable/ic_menu"
+                            app:iconGravity="textStart"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/scan_button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="8dp"
+                            android:text="Scan Now"
+                            android:textAllCaps="false"
+                            android:enabled="false"
+                            app:backgroundTint="@color/colorPrimary" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Results Section (initially hidden, populated after scan) -->
+            <LinearLayout
+                android:id="@+id/results_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <!-- Overall Result Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Scan Result"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_color_black"
+                            android:fontFamily="@font/poppins_bold"
+                            android:layout_marginBottom="8dp" />
+
+                        <TextView
+                            android:id="@+id/authenticity_result_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:fontFamily="@font/poppins_bold"
+                            tools:text="GENUINE" />
+
+                        <TextView
+                            android:id="@+id/confidence_result_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Confidence: HIGH" />
+
+                        <TextView
+                            android:id="@+id/denomination_result_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="PHP 1000" />
+
+                        <TextView
+                            android:id="@+id/detected_features_count_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Detected Features: 5 of 7" />
+
+                        <TextView
+                            android:id="@+id/coverage_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Overall Coverage: 71.4%" />
+
+                        <TextView
+                            android:id="@+id/reasons_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            android:layout_marginTop="4dp"
+                            tools:text="Reasons: ..." />
+
+                        <TextView
+                            android:id="@+id/features_summary_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            android:layout_marginTop="4dp"
+                            tools:text="Summary: ..." />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Annotated Image Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/annotated_image_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Annotated Image"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_color_black"
+                            android:fontFamily="@font/poppins_bold"
+                            android:layout_marginBottom="8dp" />
+
+                        <ImageView
+                            android:id="@+id/annotated_image_view"
+                            android:layout_width="match_parent"
+                            android:layout_height="200dp"
+                            android:scaleType="fitCenter"
+                            android:contentDescription="Annotated scan result" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Quality Metrics Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/quality_metrics_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/image_quality"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_color_black"
+                            android:fontFamily="@font/poppins_bold"
+                            android:layout_marginBottom="4dp" />
+
+                        <TextView
+                            android:id="@+id/quality_status_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Status: GOOD (85.0)" />
+
+                        <TextView
+                            android:id="@+id/sharpness_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Sharpness: 90.5" />
+
+                        <TextView
+                            android:id="@+id/brightness_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Brightness: 75.2" />
+
+                        <TextView
+                            android:id="@+id/contrast_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="12sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Contrast: 80.1" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Metadata Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    app:cardCornerRadius="12dp"
+                    app:cardElevation="4dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:id="@+id/scan_id_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Scan ID: abc-123" />
+
+                        <TextView
+                            android:id="@+id/timestamp_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Timestamp: 2024-01-01T12:00:00" />
+
+                        <TextView
+                            android:id="@+id/processing_time_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="11sp"
+                            android:fontFamily="@font/poppins"
+                            tools:text="Processing Time: 2.5s" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -20,9 +20,19 @@ import com.google.firebase.database.ServerValue;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.messaging.FirebaseMessaging;
 
+import org.json.JSONObject;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class FBUtils {
     public String USERS_PATH = "Users";
@@ -45,10 +55,16 @@ public class FBUtils {
     public String VIDEO_SCAN_PATH = "Video Scan";
 
 
+    private static final String FIREBASE_REST_BASE = "https://bill-sense-aec6b-default-rtdb.firebaseio.com/";
     private final FirebaseDatabase database;
+    private final OkHttpClient httpClient;
 
     public FBUtils() {
         database = FirebaseDatabase.getInstance();
+        httpClient = new OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build();
     }
 
     public void checkUserExists(String path, String userEmail,
@@ -123,66 +139,126 @@ public class FBUtils {
 
     public void loginUser(String path, String email, String password,
                           final FBInterface.OnLoginCallBack onLoginListener) {
-        DatabaseReference ref = database.getReference(path);
-        ref.orderByChild("email").equalTo(email).addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (dataSnapshot.exists()) {
-                    for (DataSnapshot userSnapshot : dataSnapshot.getChildren()) {
-                        String id = userSnapshot.child("id").getValue(String.class);
-                        FirebaseMessaging.getInstance().getToken()
-                                .addOnCompleteListener(task -> {
-                                    if (!task.isSuccessful()) {
-                                        Log.w("==FCMTOKEN", "Fetching FCM registration token failed",
-                                                task.getException());
-                                        return;
-                                    }
-                                    String token = task.getResult();
-                                    updateFCMTokenCode(path, id, token);
-                                });
-                        String storedPassword = userSnapshot.child("password").getValue(String.class);
-                        if (password.equals(storedPassword)) {
-                            // Password matches, check verification status
-                            String status = userSnapshot.child("status").getValue(String.class);
-                            if ("verified".equals(status)) { // Assuming "verified" represents verified status
-                                // Login successful, user is verified
-                                onLoginListener.onLoginSuccess(userSnapshot);
-                            } else {
-                                // User is not verified, check verificationCode path
-                                DatabaseReference verificationCodeRef = userSnapshot.getRef()
-                                        .child("verificationCode");
-                                verificationCodeRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override
-                                    public void onDataChange(@NonNull DataSnapshot verificationCodeSnapshot) {
-                                        if (!verificationCodeSnapshot.exists()) {
-                                            // verificationCode is null, trigger events to send verification code
-                                            onLoginListener.onVerificationCodeNeeded(userSnapshot);
-                                        } else {
-                                            // verificationCode exists, user is unverified but has a code
-                                            onLoginListener.onLoginUnverified(userSnapshot);
-                                        }
-                                    }
+        Log.d("==LOGIN", "Starting login for email: " + email);
 
-                                    @Override
-                                    public void onCancelled(@NonNull DatabaseError databaseError) {
-                                        onLoginListener.onLoginFailed(databaseError.getMessage());
-                                    }
-                                });
-                            }
-                            return;
-                        }
-                    }
-                    // Password doesn't match
-                    onLoginListener.onLoginFailed("Incorrect password");
-                } else {
-                    // Email not found
-                    onLoginListener.onLoginFailed("Email not found");
-                }
+        // Use direct HTTP REST API — Firebase SDK hangs on some networks
+        String url = "https://bill-sense-aec6b-default-rtdb.firebaseio.com/" + path + ".json";
+        OkHttpClient httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build();
+
+        Request request = new Request.Builder().url(url).get().build();
+        Log.d("==LOGIN", "Fetching users via REST API: " + url);
+
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("==LOGIN", "REST API failed: " + e.getMessage());
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                    onLoginListener.onLoginFailed("Connection failed. Check your internet connection.")
+                );
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-                onLoginListener.onLoginFailed(databaseError.getMessage());
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "null";
+                Log.d("==LOGIN", "REST API response code=" + response.code() + " length=" + body.length());
+
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    try {
+                        if (body.equals("null") || body.isEmpty()) {
+                            onLoginListener.onLoginFailed("No users found");
+                            return;
+                        }
+                        JSONObject users = new JSONObject(body);
+                        String matchedKey = null;
+                        JSONObject matchedUser = null;
+
+                        Iterator<String> keys = users.keys();
+                        while (keys.hasNext()) {
+                            String key = keys.next();
+                            JSONObject user = users.getJSONObject(key);
+                            String userEmail = user.optString("email", "");
+                            if (email.equalsIgnoreCase(userEmail)) {
+                                matchedKey = key;
+                                matchedUser = user;
+                                break;
+                            }
+                        }
+
+                        if (matchedUser == null) {
+                            onLoginListener.onLoginFailed("Email not found");
+                            return;
+                        }
+
+                        String id = matchedUser.optString("id", matchedKey);
+                        String storedPassword = matchedUser.optString("password", "");
+                        String status = matchedUser.optString("status", "");
+                        String name = matchedUser.optString("name", "");
+
+                        Log.d("==LOGIN", "Found user id=" + id + " status=" + status);
+
+                        // Defer FCM token update
+                        final String finalId = id;
+                        FirebaseMessaging.getInstance().getToken()
+                                .addOnCompleteListener(task -> {
+                                    if (task.isSuccessful()) {
+                                        updateFCMTokenCode(path, finalId, task.getResult());
+                                    }
+                                });
+
+                        // Check password — supports both plaintext and hashed passwords
+                        boolean passwordMatch;
+                        if (PasswordUtils.isHashed(storedPassword)) {
+                            passwordMatch = PasswordUtils.verifyPassword(password, storedPassword);
+                        } else {
+                            passwordMatch = password.equals(storedPassword);
+                        }
+                        Log.d("==LOGIN", "Password check: match=" + passwordMatch);
+
+                        if (!passwordMatch) {
+                            onLoginListener.onLoginFailed("Incorrect password");
+                            return;
+                        }
+
+                        Log.d("==LOGIN", "Password matched! status=" + status);
+
+                        if ("verified".equals(status)) {
+                            Log.d("==LOGIN", "User verified — saving prefs and navigating");
+                            try {
+                                PrefManager.getInstance().saveUserData(finalId, email, name);
+                                Log.d("==LOGIN", "Prefs saved. Calling onLoginSuccessDirect.");
+                                onLoginListener.onLoginSuccessDirect(finalId, email, name);
+                                Log.d("==LOGIN", "onLoginSuccessDirect callback returned.");
+                            } catch (Exception ex) {
+                                Log.e("==LOGIN", "CRASH after login: " + ex.getMessage(), ex);
+                                onLoginListener.onLoginFailed("Login error: " + ex.getMessage());
+                            }
+                        } else {
+                            String verificationCode = matchedUser.optString("verificationCode", "");
+                            DatabaseReference verificationCodeRef = database.getReference(path)
+                                    .child(matchedKey).child("verificationCode");
+                            DatabaseReference userRefForVerify = database.getReference(path).child(matchedKey);
+                            userRefForVerify.get().addOnSuccessListener(userSnap -> {
+                                verificationCodeRef.get().addOnSuccessListener(vcSnap -> {
+                                    if (!vcSnap.exists()) {
+                                        onLoginListener.onVerificationCodeNeeded(userSnap);
+                                    } else {
+                                        onLoginListener.onLoginUnverified(userSnap);
+                                    }
+                                }).addOnFailureListener(e2 ->
+                                    onLoginListener.onLoginFailed("Verification check failed")
+                                );
+                            }).addOnFailureListener(e2 ->
+                                onLoginListener.onLoginFailed("Failed to load user data")
+                            );
+                        }
+                    } catch (Exception e) {
+                        Log.e("==LOGIN", "JSON parse error: " + e.getMessage());
+                        onLoginListener.onLoginFailed("Login error: " + e.getMessage());
+                    }
+                });
             }
         });
     }
@@ -248,45 +324,152 @@ public class FBUtils {
     }
 
     public void getUserData(String path, String userId, final FBInterface.OnGetUserDataCallBack listener) {
-        DatabaseReference userRef = database.getReference(path).child(userId);
+        // Use REST API directly — Firebase SDK hangs on some networks
+        String url = FIREBASE_REST_BASE + path + "/" + userId + ".json";
+        Log.d("FBUtils", "getUserData REST: " + url);
 
-        userRef.addValueEventListener(new ValueEventListener() {
+        Request request = new Request.Builder().url(url).get().build();
+        httpClient.newCall(request).enqueue(new Callback() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (dataSnapshot.exists()) {
-                    Users users = dataSnapshot.getValue(Users.class);
-                    listener.onUserDataSuccess(users);
-                } else {
-                    listener.onUserDataNotExist();
-                }
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("FBUtils", "getUserData REST failed: " + e.getMessage());
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                    listener.onGetUserDataFailure(e));
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-                listener.onGetUserDataFailure(new Exception("Database error: " + databaseError.getMessage()));
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "null";
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    try {
+                        if (body.equals("null") || body.isEmpty()) {
+                            listener.onUserDataNotExist();
+                            return;
+                        }
+                        org.json.JSONObject json = new org.json.JSONObject(body);
+                        Users users = new Users();
+                        users.setId(json.optString("id", userId));
+                        users.setEmail(json.optString("email", ""));
+                        users.setName(json.optString("name", ""));
+                        users.setPhone(json.optString("phone", ""));
+                        users.setImage(json.optString("image", ""));
+                        users.setStatus(json.optString("status", ""));
+                        users.setDownloadIdUrl(json.optString("downloadIdUrl", ""));
+                        listener.onUserDataSuccess(users);
+                    } catch (Exception e) {
+                        Log.e("FBUtils", "getUserData parse error: " + e.getMessage());
+                        listener.onGetUserDataFailure(e);
+                    }
+                });
             }
         });
     }
 
     public void getAllDataFromPath(String path, final FBInterface.OnFetchDataCallBack onGetDataListener) {
-        DatabaseReference ref = database.getReference(path);
+        // Use REST API directly — Firebase SDK hangs on some networks
+        String url = FIREBASE_REST_BASE + path + ".json";
+        Log.d("FBUtils", "getAllDataFromPath REST: " + url);
 
-        ref.addValueEventListener(new ValueEventListener() {
+        Request request = new Request.Builder().url(url).get().build();
+        httpClient.newCall(request).enqueue(new Callback() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (dataSnapshot.exists()) {
-                    onGetDataListener.onFetchDataSuccess(dataSnapshot);
-                } else {
-                    // No data found at the specified path
-                    onGetDataListener.onDataNotFound();
-                }
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("FBUtils", "getAllDataFromPath REST failed: " + e.getMessage());
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                    onGetDataListener.onFetchDataFailed("Network error: " + e.getMessage()));
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-                // Error occurred while reading data
-                onGetDataListener.onFetchDataFailed(
-                        "Database error: " + databaseError.getMessage());
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "null";
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (body.equals("null") || body.isEmpty()) {
+                        onGetDataListener.onDataNotFound();
+                        return;
+                    }
+                    // Parse JSON and convert to DataSnapshot-like structure via Firebase SDK
+                    // We push the data back through Firebase local cache
+                    DatabaseReference ref = database.getReference(path);
+                    try {
+                        org.json.JSONObject json = new org.json.JSONObject(body);
+                        // Set value locally then read it back as DataSnapshot
+                        java.util.Map<String, Object> map = jsonToMap(json);
+                        ref.setValue(map).addOnSuccessListener(v -> {
+                            ref.get().addOnSuccessListener(snap -> {
+                                if (snap.exists()) {
+                                    onGetDataListener.onFetchDataSuccess(snap);
+                                } else {
+                                    onGetDataListener.onDataNotFound();
+                                }
+                            }).addOnFailureListener(e2 ->
+                                onGetDataListener.onFetchDataFailed("Cache read failed: " + e2.getMessage()));
+                        }).addOnFailureListener(e2 ->
+                            onGetDataListener.onFetchDataFailed("Cache write failed: " + e2.getMessage()));
+                    } catch (Exception e) {
+                        Log.e("FBUtils", "getAllDataFromPath parse error: " + e.getMessage());
+                        onGetDataListener.onFetchDataFailed("Parse error: " + e.getMessage());
+                    }
+                });
+            }
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, Object> jsonToMap(org.json.JSONObject json) {
+        java.util.Map<String, Object> map = new java.util.HashMap<>();
+        java.util.Iterator<String> keys = json.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = json.opt(key);
+            if (value instanceof org.json.JSONObject) {
+                map.put(key, jsonToMap((org.json.JSONObject) value));
+            } else if (value instanceof org.json.JSONArray) {
+                org.json.JSONArray arr = (org.json.JSONArray) value;
+                java.util.List<Object> list = new java.util.ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    Object item = arr.opt(i);
+                    if (item instanceof org.json.JSONObject) {
+                        list.add(jsonToMap((org.json.JSONObject) item));
+                    } else {
+                        list.add(item);
+                    }
+                }
+                map.put(key, list);
+            } else if (value != null && !value.equals(org.json.JSONObject.NULL)) {
+                map.put(key, value);
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Pure REST fetch — returns raw JSON string without touching Firebase SDK at all.
+     * Use this when you need to parse model objects directly from JSON (Gson)
+     * to avoid Firebase SDK hangs on certain devices/networks.
+     */
+    public void fetchJsonFromPath(String path, final FBInterface.OnRestJsonFetchCallback callback) {
+        String url = FIREBASE_REST_BASE + path + ".json";
+        Log.d("FBUtils", "fetchJsonFromPath REST: " + url);
+
+        Request request = new Request.Builder().url(url).get().build();
+        httpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                Log.e("FBUtils", "fetchJsonFromPath REST failed: " + e.getMessage());
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        callback.onJsonFetchFailed("Network error: " + e.getMessage()));
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
+                String body = response.body() != null ? response.body().string() : "null";
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (body.equals("null") || body.isEmpty()) {
+                        callback.onJsonFetchEmpty();
+                    } else {
+                        callback.onJsonFetchSuccess(body);
+                    }
+                });
             }
         });
     }
@@ -462,6 +645,64 @@ public class FBUtils {
                 .addOnFailureListener(listener::onConcernDataSaveFailure);
     }
 
+    /**
+     * Finds a user by email and stores a password reset code.
+     */
+    public void storePasswordResetCode(String path, String email, String resetCode,
+                                       FBInterface.OnPasswordResetCallBack listener) {
+        DatabaseReference ref = database.getReference(path);
+        ref.orderByChild("email").equalTo(email)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                        if (!dataSnapshot.exists()) {
+                            listener.onPasswordResetFailed("Email not found");
+                            return;
+                        }
+                        for (DataSnapshot userSnapshot : dataSnapshot.getChildren()) {
+                            String userId = userSnapshot.getKey();
+                            if (userId != null) {
+                                ref.child(userId).child("resetCode").setValue(resetCode)
+                                        .addOnSuccessListener(aVoid -> listener.onResetCodeStored(userId))
+                                        .addOnFailureListener(e ->
+                                                listener.onPasswordResetFailed("Failed to store reset code"));
+                                return;
+                            }
+                        }
+                        listener.onPasswordResetFailed("User not found");
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError databaseError) {
+                        listener.onPasswordResetFailed(databaseError.getMessage());
+                    }
+                });
+    }
+
+    /**
+     * Verifies a reset code and updates the password.
+     */
+    public void verifyResetCodeAndUpdatePassword(String path, String userId, String code,
+                                                  String newPassword,
+                                                  FBInterface.OnPasswordResetCallBack listener) {
+        DatabaseReference userRef = database.getReference(path).child(userId);
+        userRef.child("resetCode").get().addOnSuccessListener(snapshot -> {
+            String storedCode = snapshot.getValue(String.class);
+            if (storedCode != null && storedCode.equals(code)) {
+                // Code matches — update password and remove reset code
+                Map<String, Object> updates = new HashMap<>();
+                updates.put("password", newPassword);
+                updates.put("resetCode", null);
+                userRef.updateChildren(updates)
+                        .addOnSuccessListener(aVoid -> listener.onPasswordResetSuccess())
+                        .addOnFailureListener(e ->
+                                listener.onPasswordResetFailed("Failed to update password"));
+            } else {
+                listener.onPasswordResetFailed("Invalid reset code");
+            }
+        }).addOnFailureListener(e -> listener.onPasswordResetFailed("Verification failed"));
+    }
+
     public void updateFCMTokenCode(String path, String userId, String token) {
         DatabaseReference userRef = database.getReference(path).child(userId);
         userRef.child("fcmToken").setValue(token);
@@ -617,9 +858,9 @@ public class FBUtils {
         receiverRef.updateChildren(receiverDataMap);
     }
 
-    public void getChatsData(String path, String ticketId, String senderRoom, final FBInterface.OnChatDataRetrievedListener listener) {
+    public ValueEventListener getChatsData(String path, String ticketId, String senderRoom, final FBInterface.OnChatDataRetrievedListener listener) {
         DatabaseReference chatsRef = database.getReference(path).child(ticketId).child("Chats").child(senderRoom);
-        chatsRef.addValueEventListener(new ValueEventListener() {
+        ValueEventListener valueEventListener = new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 ArrayList<Chats> chatsList = new ArrayList<>();
@@ -641,7 +882,9 @@ public class FBUtils {
             public void onCancelled(@NonNull DatabaseError error) {
                 listener.onChatDataRetrievalFailed(error.toException());
             }
-        });
+        };
+        chatsRef.addValueEventListener(valueEventListener);
+        return valueEventListener;
     }
 
 

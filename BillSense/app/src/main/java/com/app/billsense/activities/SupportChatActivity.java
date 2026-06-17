@@ -22,6 +22,8 @@ import com.app.billsense.utils.FBUtils;
 import com.app.billsense.utils.InputValidator;
 import com.app.billsense.utils.PrefManager;
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 
@@ -32,6 +34,8 @@ public class SupportChatActivity extends AppCompatActivity {
     private String senderRoom, receiverRoom;
     private ChatsAdapter chatsAdapter;
     private ArrayList<Chats> chatsArrayList = new ArrayList<>();
+    private DatabaseReference chatListenerRef;
+    private ValueEventListener chatValueListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,9 +50,11 @@ public class SupportChatActivity extends AppCompatActivity {
 
         MaterialToolbar toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.chat));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.chat));
+        }
 
         toolbar.setNavigationOnClickListener(view -> {
             finish();
@@ -86,14 +92,16 @@ public class SupportChatActivity extends AppCompatActivity {
         ));
         chatsAdapter = new ChatsAdapter(this, chatsArrayList, userId);
         binding.chatsRv.setAdapter(chatsAdapter);
-        fbUtils.getChatsData(fbUtils.SUPPORT_PATH, supportId, senderRoom,
+        chatValueListener = fbUtils.getChatsData(fbUtils.SUPPORT_PATH, supportId, senderRoom,
                 new FBInterface.OnChatDataRetrievedListener() {
             @Override
             public void onChatDataRetrieved(ArrayList<Chats> messagesList) {
                 chatsArrayList.clear();
                 chatsArrayList.addAll(messagesList);
                 chatsAdapter.notifyDataSetChanged();
-                binding.chatsRv.smoothScrollToPosition(chatsAdapter.getItemCount() - 1);
+                if (chatsAdapter.getItemCount() > 0) {
+                    binding.chatsRv.smoothScrollToPosition(chatsAdapter.getItemCount() - 1);
+                }
             }
 
             @Override
@@ -108,5 +116,17 @@ public class SupportChatActivity extends AppCompatActivity {
                 chatsAdapter.notifyDataSetChanged();
             }
         });
+
+        // Store reference for cleanup in onDestroy
+        chatListenerRef = com.google.firebase.database.FirebaseDatabase.getInstance()
+                .getReference(fbUtils.SUPPORT_PATH).child(supportId).child("Chats").child(senderRoom);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (chatListenerRef != null && chatValueListener != null) {
+            chatListenerRef.removeEventListener(chatValueListener);
+        }
     }
 }

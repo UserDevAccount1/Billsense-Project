@@ -21,7 +21,6 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Pair;
 import android.view.LayoutInflater;
 import android.view.Window;
@@ -72,9 +71,11 @@ public class ProfileActivity extends AppCompatActivity {
 
         MaterialToolbar toolbar = binding.toolbar;
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
-        getSupportActionBar().setTitle(getString(R.string.profile));
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowHomeEnabled(true);
+            getSupportActionBar().setTitle(getString(R.string.profile));
+        }
 
         toolbar.setNavigationOnClickListener(view -> {
             finish();
@@ -114,6 +115,18 @@ public class ProfileActivity extends AppCompatActivity {
                         imagePickerActivityResultLauncher.launch(intent1);
                         return null;
                     });
+        });
+
+        binding.customerSupportProfile.setOnClickListener(view -> {
+            startActivity(new Intent(ProfileActivity.this, SupportActivity.class));
+        });
+
+        binding.community.setOnClickListener(view -> {
+            startActivity(new Intent(ProfileActivity.this, VotingActivity.class));
+        });
+
+        binding.scanSettings.setOnClickListener(view -> {
+            startActivity(new Intent(ProfileActivity.this, MLSettingsActivity.class));
         });
 
         binding.editInfo.setOnClickListener(view -> {
@@ -171,7 +184,14 @@ public class ProfileActivity extends AppCompatActivity {
             String currentPassword = inputCurrentPassword.getText().toString();
             String newPassword = inputNewPassword.getText().toString();
             String confirmPassword = inputConfirmPassword.getText().toString();
-            if (!isValidConfirmPassword(currentPassword, users.getPassword())) {
+            boolean currentPasswordValid;
+            String storedPwd = users.getPassword();
+            if (com.app.billsense.utils.PasswordUtils.isHashed(storedPwd)) {
+                currentPasswordValid = com.app.billsense.utils.PasswordUtils.verifyPassword(currentPassword, storedPwd);
+            } else {
+                currentPasswordValid = currentPassword.equals(storedPwd);
+            }
+            if (!currentPasswordValid) {
                 setEditTextError(inputCurrentPassword, "Current Password is incorrect.");
             } else if (!isValidPassword(newPassword)) {
                 setEditTextError(inputNewPassword, "Enter valid new password.");
@@ -198,7 +218,7 @@ public class ProfileActivity extends AppCompatActivity {
                                         "If you did not request this code or have any questions, please reach out to our support team at support email" +
                                         getString(R.string.support_email) + " or phone number " + getString(R.string.support_phone) + ".\n" +
                                         "\n" +
-                                        "Thank you for choosing " + getString(R.string.app_name) + ". We look forward to serving your automotive needs.\n" +
+                                        "Thank you for choosing " + getString(R.string.app_name) + ". We look forward to helping you detect counterfeit currency..\n" +
                                         "\n" +
                                         "Best regards,\n" +
                                         getString(R.string.app_name) + " IT Department";
@@ -263,7 +283,7 @@ public class ProfileActivity extends AppCompatActivity {
                                 showToast(ProfileActivity.this, "Error: " + exception.getMessage());
                             }
                         },
-                        new Pair<>("password", newPassword),
+                        new Pair<>("password", com.app.billsense.utils.PasswordUtils.hashPassword(newPassword)),
                         new Pair<>("status", getString(R.string.unverified))
                 );
             }
@@ -410,15 +430,11 @@ public class ProfileActivity extends AppCompatActivity {
         AlertDialog alertDialog = dialogBuilder.create();
         alertDialog.setCanceledOnTouchOutside(false);
         exitBinding.yesBtn.setOnClickListener(view -> {
-            showProgressDialog(ProfileActivity.this);
-            new Handler().postDelayed(() -> {
-                alertDialog.dismiss();
-                hideProgressDialog();
-                PrefManager.getInstance().clearUserData();
-                startActivity(new Intent(ProfileActivity.this, MainActivity.class)
-                        .addFlags(FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK));
-                finish();
-            }, 2500);
+            alertDialog.dismiss();
+            PrefManager.getInstance().clearUserData();
+            startActivity(new Intent(ProfileActivity.this, MainActivity.class)
+                    .addFlags(FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK));
+            finish();
         });
         exitBinding.noBtn.setOnClickListener(view -> alertDialog.dismiss());
         alertDialog.show();
