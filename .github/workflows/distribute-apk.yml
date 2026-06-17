@@ -38,12 +38,17 @@ jobs:
           LP: ${{ secrets.LOCAL_PROPERTIES }}
           SA: ${{ secrets.FIREBASE_APP_DIST_SA }}
           SVC: ${{ secrets.SERVICE_ACCOUNT_JSON }}
+          KS: ${{ secrets.DEBUG_KEYSTORE_B64 }}
         run: |
           printf '%s' "$GS" > BillSense/app/google-services.json
           printf '%s' "$LP" > BillSense/local.properties
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
           mkdir -p BillSense/app/src/main/res/raw
           printf '%s' "$SVC" > BillSense/app/src/main/res/raw/service_account.json
+          # Consistent signing: shared debug keystore so every build (local + CI)
+          # signs with the SAME SHA-1 -> Maps key match + in-place installs.
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KS" | base64 -d > "$HOME/.android/debug.keystore"
 
       - name: Build APK(s)
         working-directory: BillSense
