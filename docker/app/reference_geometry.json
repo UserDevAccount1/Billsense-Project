@@ -1,0 +1,267 @@
+{
+  "_meta": {
+    "source": "empirical(median) + BSP cross-check",
+    "per_denom_images": {
+      "1000": 80,
+      "200": 80,
+      "100": 80,
+      "50": 80,
+      "500": 80,
+      "20": 80
+    }
+  },
+  "geometry": {
+    "1000": {
+      "enhanced_value_panel": {
+        "cx": 0.1401,
+        "cy": 0.5963,
+        "w": 0.132,
+        "h": 0.4547,
+        "sigma_pos": 0.3938,
+        "sigma_size": 0.1652,
+        "n": 14,
+        "bsp_ok": false
+      },
+      "value": {
+        "cx": 0.2831,
+        "cy": 0.4431,
+        "w": 0.2276,
+        "h": 0.4455,
+        "sigma_pos": 0.4286,
+        "sigma_size": 0.2153,
+        "n": 31,
+        "bsp_ok": false
+      },
+      "serial_number": {
+        "cx": 0.1432,
+        "cy": 0.7258,
+        "w": 0.3105,
+        "h": 0.159,
+        "sigma_pos": 0.3586,
+        "sigma_size": 0.1421,
+        "n": 9,
+        "bsp_ok": false
+      },
+      "watermark": {
+        "cx": 0.0,
+        "cy": 0.4294,
+        "w": 0.263,
+        "h": 0.3406,
+        "sigma_pos": 0.1022,
+        "sigma_size": 0.1718,
+        "n": 6,
+        "bsp_ok": false
+      },
+      "see_through_mark": {
+        "cx": 0.0,
+        "cy": 0.6186,
+        "w": 0.4886,
+        "h": 0.1032,
+        "sigma_pos": 0.06,
+        "sigma_size": 0.079,
+        "n": 3,
+        "bsp_ok": false
+      },
+      "ovd": {
+        "cx": 0.4606,
+        "cy": 0.5691,
+        "w": 0.2664,
+        "h": 0.2712,
+        "sigma_pos": 0.3076,
+        "sigma_size": 0.2187,
+        "n": 54,
+        "bsp_ok": false
+      },
+      "concealed_value": {
+        "cx": 0.4053,
+        "cy": 0.1703,
+        "w": 0.2,
+        "h": 0.3526,
+        "sigma_pos": 0.4125,
+        "sigma_size": 0.1241,
+        "n": 9,
+        "bsp_ok": false
+      },
+      "optically_variable_ink": {
+        "cx": 1.0,
+        "cy": 0.5006,
+        "w": 0.1076,
+        "h": 0.1561,
+        "sigma_pos": 0.3692,
+        "sigma_size": 0.1212,
+        "n": 35,
+        "bsp_ok": false
+      }
+    },
+    "200": {
+      "serial_number": {
+        "cx": 0.2473,
+        "cy": 1.0,
+        "w": 0.389,
+        "h": 0.1771,
+        "sigma_pos": 0.4443,
+        "sigma_size": 0.2634,
+        "n": 6,
+        "bsp_ok": false
+      },
+      "watermark": {
+        "cx": 0.0,
+        "cy": 1.0,
+        "w": 0.2162,
+        "h": 0.3589,
+        "sigma_pos": 0.06,
+        "sigma_size": 0.1238,
+        "n": 4,
+        "bsp_ok": false
+      },
+      "security_thread": {
+        "cx": 0.0,
+        "cy": 1.0,
+        "w": 0.1826,
+        "h": 0.8955,
+        "sigma_pos": 0.3071,
+        "sigma_size": 0.06,
+        "n": 3,
+        "bsp_ok": false
+      },
+      "value": {
+        "cx": 0.904,
+        "cy": 0.6994,
+        "w": 0.1723,
+        "h": 0.2095,
+        "sigma_pos": 0.4387,
+        "sigma_size": 0.2496,
+        "n": 28,
+        "bsp_ok": false
+      },
+      "see_through_mark": {
+        "cx": 0.791,
+        "cy": 0.7044,
+        "w": 0.2805,
+        "h": 0.1528,
+        "sigma_pos": 0.4364,
+        "sigma_size": 0.0835,
+        "n": 7,
+        "bsp_ok": false
+      },
+      "concealed_value": {
+        "cx": 0.1851,
+        "cy": 0.2103,
+        "w": 0.1193,
+        "h": 0.4459,
+        "sigma_pos": 0.3224,
+        "sigma_size": 0.1193,
+        "n": 5,
+        "bsp_ok": false
+      }
+    },
+    "100": {
+      "value": {
+        "cx": 0.8593,
+        "cy": 0.5611,
+        "w": 0.1618,
+        "h": 0.3728,
+        "sigma_pos": 0.4064,
+        "sigma_size": 0.1854,
+        "n": 14,
+        "bsp_ok": false
+      },
+      "concealed_value": {
+        "cx": 0.5064,
+        "cy": 0.1558,
+        "w": 0.3308,
+        "h": 0.3431,
+        "sigma_pos": 0.2622,
+        "sigma_size": 0.1028,
+        "n": 3,
+        "bsp_ok": false
+      },
+      "serial_number": {
+        "cx": 0.4123,
+        "cy": 0.6988,
+        "w": 0.3068,
+        "h": 0.107,
+        "sigma_pos": 0.4189,
+        "sigma_size": 0.1059,
+        "n": 3,
+        "bsp_ok": false
+      }
+    },
+    "50": {
+      "value": {
+        "cx": 0.0855,
+        "cy": 0.0,
+        "w": 0.1542,
+        "h": 0.4192,
+        "sigma_pos": 0.4576,
+        "sigma_size": 0.1859,
+        "n": 9,
+        "bsp_ok": false
+      },
+      "see_through_mark": {
+        "cx": 0.8865,
+        "cy": 0.0,
+        "w": 0.1764,
+        "h": 0.1167,
+        "sigma_pos": 0.4714,
+        "sigma_size": 0.1063,
+        "n": 3,
+        "bsp_ok": false
+      },
+      "concealed_value": {
+        "cx": 0.178,
+        "cy": 0.3048,
+        "w": 0.1236,
+        "h": 0.312,
+        "sigma_pos": 0.4185,
+        "sigma_size": 0.06,
+        "n": 3,
+        "bsp_ok": false
+      }
+    },
+    "500": {
+      "optically_variable_ink": {
+        "cx": 0.4854,
+        "cy": 0.4102,
+        "w": 0.1189,
+        "h": 0.0863,
+        "sigma_pos": 0.3023,
+        "sigma_size": 0.0739,
+        "n": 29,
+        "bsp_ok": false
+      },
+      "ovd": {
+        "cx": 0.4745,
+        "cy": 0.4452,
+        "w": 0.2508,
+        "h": 0.1892,
+        "sigma_pos": 0.2546,
+        "sigma_size": 0.1666,
+        "n": 38,
+        "bsp_ok": false
+      },
+      "value": {
+        "cx": 0.2967,
+        "cy": 0.6038,
+        "w": 0.1764,
+        "h": 0.356,
+        "sigma_pos": 0.3623,
+        "sigma_size": 0.2322,
+        "n": 14,
+        "bsp_ok": true
+      }
+    },
+    "20": {
+      "concealed_value": {
+        "cx": 0.5548,
+        "cy": 0.3071,
+        "w": 0.1492,
+        "h": 0.2824,
+        "sigma_pos": 0.3773,
+        "sigma_size": 0.1003,
+        "n": 4,
+        "bsp_ok": false
+      }
+    }
+  }
+}

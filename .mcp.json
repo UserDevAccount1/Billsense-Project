@@ -12,6 +12,11 @@
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp@latest"]
     },
+    "colab-mcp": {
+      "command": "C:/Users/Future26/.local/bin/colab-mcp.exe",
+      "args": [],
+      "timeout": 60000
+    },
     "cpanel": {
       "command": "node",
       "args": ["./tools/ringo380-cpanel-mcp/dist/index.js"],

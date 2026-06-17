@@ -93,3 +93,6 @@ Resources/
 
 # Firebase service account (local handoff — never commit)
 tools/cpanel-mcp/.firebase-sa.local.json
+
+# Baked model weights (large; live in Resources backup / GCS)
+docker/app/models/

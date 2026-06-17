@@ -256,32 +256,27 @@ public class StandardPostScanActivity extends AppCompatActivity {
         int statusColor = Color.GRAY;
         if (auth != null) {
             statusText = auth.getStatus() != null ? auth.getStatus() : "UNKNOWN";
-            if (auth.isGenuine()) {
-                statusColor = Color.parseColor("#2E7D32"); // green
-            } else if (statusText.toUpperCase(Locale.US).contains("LIKELY")) {
-                statusColor = Color.parseColor("#FF8F00"); // amber
-            } else {
+            String su = statusText.toUpperCase(Locale.US);
+            if (su.contains("COUNTERFEIT")) {
                 statusColor = Color.parseColor("#C62828"); // red
+            } else if (su.contains("GENUINE") && !su.contains("LIKELY")) {
+                statusColor = Color.parseColor("#2E7D32"); // green
+            } else {
+                statusColor = Color.parseColor("#FF8F00"); // amber: LIKELY GENUINE / NEEDS_RESCAN / UNKNOWN
             }
         }
         binding.authenticityStatusText.setText(statusText);
         binding.authenticityStatusText.setTextColor(statusColor);
 
-        // 2. Confidence Score
-        double confidenceValue = 0;
-        if (auth != null && auth.getConfidence() != null) {
-            String confStr = auth.getConfidence().replaceAll("[^0-9.]", "");
-            try {
-                confidenceValue = Double.parseDouble(confStr);
-            } catch (NumberFormatException ignored) {}
-            binding.confidenceText.setText(String.format("Authenticity Score: %s", auth.getConfidence()));
-        } else {
-            binding.confidenceText.setText("Authenticity Score: N/A");
-        }
-        binding.confidenceBar.setProgress((int) confidenceValue);
-        // Tint the progress bar to match status
+        // 2. Confidence Score — calibrated 0-100 (real measurement from the server)
+        int score = auth != null ? auth.getAuthenticityScore() : 0;
+        String confLabel = (auth != null && auth.getConfidence() != null) ? auth.getConfidence() : "N/A";
+        binding.confidenceText.setText(String.format(Locale.US, "Authenticity Score: %d/100 (%s)", score, confLabel));
+        binding.confidenceBar.setProgress(score);
+        int barColor = score >= 75 ? Color.parseColor("#2E7D32")
+                : (score >= 25 ? Color.parseColor("#FF8F00") : Color.parseColor("#C62828"));
         binding.confidenceBar.getProgressDrawable().setColorFilter(
-                statusColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                barColor, android.graphics.PorterDuff.Mode.SRC_IN);
 
         // 3. Bill Info
         String denom = response.getDenomination();
@@ -291,19 +286,21 @@ public class StandardPostScanActivity extends AppCompatActivity {
             binding.denominationText.setText("Denomination: N/A");
         }
 
-        // 4. Security Features Checklist
+        // 4. Security Features Checklist (with measured placement %)
         binding.securityFeaturesLayout.removeAllViews();
         StandardScanResponse.SecurityFeatures sf = response.getSecurityFeatures();
+        java.util.Map<String, StandardScanResponse.FeatureGeometry> geom =
+                auth != null ? auth.getFeatureGeometry() : null;
         if (sf != null) {
             binding.securityFeaturesCard.setVisibility(View.VISIBLE);
-            addFeatureRow("Watermark", sf.hasWatermark());
-            addFeatureRow("Security Thread", sf.hasSecurityThread());
-            addFeatureRow("Serial Number", sf.hasSerialNumber());
-            addFeatureRow("See-through Mark", sf.hasSeeThroughMark());
-            addFeatureRow("Concealed Value", sf.hasConcealedValue());
-            addFeatureRow("OVD Patch", sf.hasOvd());
-            addFeatureRow("Enhanced Value Panel", sf.hasEnhancedValuePanel());
-            addFeatureRow("Optically Variable Ink", sf.hasOpticallyVariableInk());
+            addFeatureRow("Watermark", sf.hasWatermark(), geom, "watermark");
+            addFeatureRow("Security Thread", sf.hasSecurityThread(), geom, "security_thread");
+            addFeatureRow("Serial Number", sf.hasSerialNumber(), geom, "serial_number");
+            addFeatureRow("See-through Mark", sf.hasSeeThroughMark(), geom, "see_through_mark");
+            addFeatureRow("Concealed Value", sf.hasConcealedValue(), geom, "concealed_value");
+            addFeatureRow("OVD Patch", sf.hasOvd(), geom, "ovd");
+            addFeatureRow("Enhanced Value Panel", sf.hasEnhancedValuePanel(), geom, "enhanced_value_panel");
+            addFeatureRow("Optically Variable Ink", sf.hasOpticallyVariableInk(), geom, "optically_variable_ink");
         } else {
             binding.securityFeaturesCard.setVisibility(View.GONE);
         }
@@ -370,7 +367,8 @@ public class StandardPostScanActivity extends AppCompatActivity {
         binding.analysisTypeText.setText("Analysis Type: " + (response.getAnalysisType() != null ? response.getAnalysisType() : "N/A"));
     }
 
-    private void addFeatureRow(String featureName, boolean detected) {
+    private void addFeatureRow(String featureName, boolean detected,
+                               java.util.Map<String, StandardScanResponse.FeatureGeometry> geom, String key) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(0, 6, 0, 6);
@@ -382,9 +380,18 @@ public class StandardPostScanActivity extends AppCompatActivity {
         icon.setPadding(0, 0, 16, 0);
         row.addView(icon);
 
+        // Append measured placement % when the server reported geometry for this feature
+        String label = featureName;
+        if (detected && geom != null && key != null && geom.get(key) != null
+                && geom.get(key).getPositionScore() != null
+                && geom.get(key).getPositionScore() >= 0.5) {
+            int placed = (int) Math.round(geom.get(key).getPositionScore() * 100);
+            label = featureName + "  \u00B7  " + placed + "% placed";
+        }
+
         TextView name = new TextView(this);
         name.setTextSize(14);
-        name.setText(featureName);
+        name.setText(label);
         name.setTextColor(detected ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828"));
         if (detected) {
             name.setTypeface(null, Typeface.BOLD);

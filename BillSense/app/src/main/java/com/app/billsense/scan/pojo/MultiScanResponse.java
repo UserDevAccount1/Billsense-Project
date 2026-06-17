@@ -60,9 +60,28 @@ public class MultiScanResponse {
     public String processingMode;
     @SerializedName("storage_id")
     public String storageId;
+    // --- Real-measurement layer (v17.5) ---
+    @SerializedName("authenticity_score")
+    public int authenticityScore;
+    @SerializedName("ovi_color_shift")
+    public OviColorShift oviColorShift;
 
     // Public default constructor
     public MultiScanResponse() {}
+
+    // --- OVI/OVD colour-shift measurement (Multi-Scan) ---
+    public static class OviColorShift {
+        @SerializedName("delta")
+        public double delta;
+        @SerializedName("shift_detected")
+        public boolean shiftDetected;
+        @SerializedName("note")
+        public String note;
+        public OviColorShift() {}
+        public double getDelta() { return delta; }
+        public boolean isShiftDetected() { return shiftDetected; }
+        public String getNote() { return note; }
+    }
 
     // --- INNER CLASSES with PUBLIC fields ---
     public static class AngleResult {
@@ -172,4 +191,6 @@ public class MultiScanResponse {
     public String getMessage() { return message; }
     public String getProcessingMode() { return processingMode; }
     public String getStorageId() { return storageId; }
+    public int getAuthenticityScore() { return authenticityScore; }
+    public OviColorShift getOviColorShift() { return oviColorShift; }
 }

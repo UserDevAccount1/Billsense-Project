@@ -114,6 +114,8 @@ public class VideoScanResponse {
         public String denominationType;
         @SerializedName("has_false_evp")
         public boolean hasFalseEvp;
+        @SerializedName("authenticity_score")
+        public int authenticityScore;
 
         // Public default constructor
         public Authenticity() {}
@@ -128,6 +130,7 @@ public class VideoScanResponse {
         public int getTotalExpectedFeatures() { return totalExpectedFeatures; }
         public String getDenominationType() { return denominationType; }
         public boolean hasFalseEvp() { return hasFalseEvp; }
+        public int getAuthenticityScore() { return authenticityScore; }
     }
 
     public static class SecurityFeatures {

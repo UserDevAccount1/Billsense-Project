@@ -129,12 +129,31 @@ public class MultiPostScanActivity extends AppCompatActivity {
     @SuppressLint({"SetTextI18n", "DefaultLocale"})
     private void populateUi(MultiScanResponse response) {
         // --- Overall Result Card ---
-        binding.authenticityResultText.setText(response.getAuthenticity());
-        binding.authenticityResultText.setTextColor(
-                response.isGenuine() ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828")
-        );
+        String mStatus = response.getAuthenticity() != null ? response.getAuthenticity() : "UNKNOWN";
+        String msu = mStatus.toUpperCase(java.util.Locale.US);
+        int mStatusColor = msu.contains("COUNTERFEIT") ? Color.parseColor("#C62828")
+                : (msu.contains("GENUINE") && !msu.contains("LIKELY")) ? Color.parseColor("#2E7D32")
+                : Color.parseColor("#FF8F00");
+        binding.authenticityResultText.setText(mStatus);
+        binding.authenticityResultText.setTextColor(mStatusColor);
         binding.denominationResultText.setText(response.getDenomination());
-        binding.confidenceResultText.setText("Confidence: " + response.getConfidence());
+
+        // Calibrated score bar (real measurement)
+        int mScore = response.getAuthenticityScore();
+        binding.confidenceResultText.setText(String.format("Authenticity Score: %d/100 (%s)", mScore, response.getConfidence()));
+        binding.confidenceBar.setProgress(mScore);
+        int mBar = mScore >= 75 ? Color.parseColor("#2E7D32") : (mScore >= 25 ? Color.parseColor("#FF8F00") : Color.parseColor("#C62828"));
+        binding.confidenceBar.getProgressDrawable().setColorFilter(mBar, android.graphics.PorterDuff.Mode.SRC_IN);
+
+        // OVI/OVD colour-shift (the strongest optical authenticator, measured across angles)
+        MultiScanResponse.OviColorShift ovi = response.getOviColorShift();
+        if (ovi != null && ovi.isShiftDetected()) {
+            binding.oviShiftText.setText(String.format("✅ Optically variable ink shifts colour across angles (Δhue %.0f)", ovi.getDelta()));
+            binding.oviShiftText.setTextColor(Color.parseColor("#2E7D32"));
+        } else {
+            binding.oviShiftText.setText("OVI/OVD colour-shift: not measured — need the OVI region visible in ≥2 angles.");
+            binding.oviShiftText.setTextColor(Color.parseColor("#9E9E9E"));
+        }
 
         // --- Annotated Image Card ---
         if (response.getAnnotatedImageUrl() != null && !response.getAnnotatedImageUrl().isEmpty()) {
