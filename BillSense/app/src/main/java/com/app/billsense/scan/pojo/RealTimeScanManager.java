@@ -34,6 +34,17 @@ public class RealTimeScanManager {
     private final Gson gson;
     private final RealTimeScanListener listener;
 
+    // --- Cold-start handling (shared by standard/multi/video scans) ---
+    private final android.os.Handler watchdog = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final OkHttpClient warmClient = new OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build();
+    private String currentEndpoint;
+    private int openRetries = 0;
+    private static final int MAX_OPEN_RETRIES = 5;
+    private volatile boolean opened = false;
+
     /**
      * Interface to pass WebSocket events back to the UI thread.
      */
@@ -59,13 +70,48 @@ public class RealTimeScanManager {
      * @param endpoint e.g., RealTimeScanManager.ENDPOINT_STANDARD_SCAN
      */
     public void connect(String endpoint) {
+        openRetries = 0;            // fresh user-initiated connect
+        internalConnect(endpoint);
+    }
+
+    private void internalConnect(String endpoint) {
+        currentEndpoint = endpoint;
+        opened = false;
         if (webSocket != null) {
-            disconnect(); // Ensure any old connection is closed
+            try { webSocket.close(1000, "reconnect"); } catch (Exception ignored) {}
+            webSocket = null;
         }
+        warmUp(); // wake Cloud Run (scale-to-zero) so the upgrade succeeds
         String url = BASE_URL_WSS + endpoint;
         Request request = new Request.Builder().url(url).build();
-        Log.d(TAG, "Connecting to WebSocket: " + url);
+        Log.d(TAG, "Connecting to WebSocket: " + url + " (attempt " + (openRetries + 1) + ")");
         webSocket = client.newWebSocket(request, new SocketListener());
+
+        // readTimeout(0) means a cold-start stall never errors — so if the socket
+        // hasn't opened soon, warm up + retry; give up after MAX_OPEN_RETRIES.
+        watchdog.removeCallbacksAndMessages(null);
+        watchdog.postDelayed(() -> {
+            if (opened) return;
+            if (openRetries < MAX_OPEN_RETRIES) {
+                openRetries++;
+                Log.w(TAG, "WS open timed out — warming up + retry " + openRetries);
+                internalConnect(currentEndpoint);
+            } else if (listener != null) {
+                listener.onScanError("Server is taking too long to respond. Check your connection and try again.");
+            }
+        }, 14000);
+    }
+
+    /** Fire-and-forget ping to wake the Cloud Run ML service. */
+    private void warmUp() {
+        try {
+            Request r = new Request.Builder()
+                    .url(com.app.billsense.BuildConfig.API_BASE_URL + "/api/health").build();
+            warmClient.newCall(r).enqueue(new okhttp3.Callback() {
+                @Override public void onFailure(@NonNull okhttp3.Call call, @NonNull java.io.IOException e) { }
+                @Override public void onResponse(@NonNull okhttp3.Call call, @NonNull Response resp) { resp.close(); }
+            });
+        } catch (Exception ignored) { }
     }
 
     /**
@@ -110,6 +156,8 @@ public class RealTimeScanManager {
      * Closes the WebSocket connection gracefully.
      */
     public void disconnect() {
+        watchdog.removeCallbacksAndMessages(null);
+        opened = false;
         if (webSocket != null) {
             Log.d(TAG, "Disconnecting WebSocket.");
             webSocket.close(1000, "User disconnected");
@@ -121,6 +169,9 @@ public class RealTimeScanManager {
         @Override
         public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
             super.onOpen(webSocket, response);
+            opened = true;
+            openRetries = 0;
+            watchdog.removeCallbacksAndMessages(null); // connected — stop the cold-start watchdog
             // *** CRUCIAL CHANGE ***
             // According to the new documentation, scanning is AUTO-START.
             // We no longer send a "START_SCAN" command here. We just notify the UI.
@@ -163,8 +214,16 @@ public class RealTimeScanManager {
             Log.e(TAG, "WebSocket connection failed!", t);
             // Clear the stale reference so connect() can create a fresh one
             RealTimeScanManager.this.webSocket = null;
-            if (listener != null) {
-                listener.onScanError("Connection failed: " + t.getMessage());
+            if (!opened && openRetries < MAX_OPEN_RETRIES) {
+                openRetries++;
+                watchdog.removeCallbacksAndMessages(null);
+                Log.w(TAG, "WS failed — warming up + retry " + openRetries);
+                watchdog.postDelayed(() -> internalConnect(currentEndpoint), 3000);
+            } else {
+                watchdog.removeCallbacksAndMessages(null);
+                if (listener != null) {
+                    listener.onScanError("Connection failed: " + t.getMessage());
+                }
             }
         }
     }

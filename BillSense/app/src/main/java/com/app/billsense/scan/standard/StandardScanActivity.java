@@ -208,18 +208,9 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
      * up never errors — so if it hasn't opened within 12s we warm up and retry.
      */
     private void connectAndWatch() {
+        // RealTimeScanManager now handles warm-up + cold-start retry internally.
         wsConnected = false;
-        retryHandler.removeCallbacksAndMessages(null);
-        warmUpServer();
         scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
-        retryHandler.postDelayed(() -> {
-            if (!wsConnected && currentUiState == UiState.READY_TO_CAPTURE && wsRetryCount < MAX_WS_RETRIES) {
-                wsRetryCount++;
-                runOnUiThread(() -> Toast.makeText(this,
-                        "Warming up scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
-                connectAndWatch();
-            }
-        }, 12000);
     }
 
     @Override
@@ -399,19 +390,8 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     @Override
     public void onScanError(String error) {
         canSendFrame = true; // Allow trying again
-        // Cold-start: the WS upgrade can fail while Cloud Run spins up. Auto-retry
-        // (with warm-up) instead of dead-ending on a one-shot "Scan Error".
-        boolean connissue = error != null && error.toLowerCase().contains("connect");
-        if (connissue && currentUiState == UiState.READY_TO_CAPTURE && wsRetryCount < MAX_WS_RETRIES) {
-            wsRetryCount++;
-            runOnUiThread(() -> Toast.makeText(this,
-                    "Reconnecting scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
-            retryHandler.postDelayed(() -> {
-                if (currentUiState == UiState.READY_TO_CAPTURE) connectAndWatch();
-            }, 3000);
-        } else {
-            runOnUiThread(() -> Toast.makeText(this, "Scan Error: " + error, Toast.LENGTH_SHORT).show());
-        }
+        // RealTimeScanManager already retried with warm-up before surfacing this.
+        runOnUiThread(() -> Toast.makeText(this, "Scan: " + error, Toast.LENGTH_SHORT).show());
     }
 
     @Override
