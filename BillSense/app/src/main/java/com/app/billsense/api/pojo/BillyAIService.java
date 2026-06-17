@@ -37,6 +37,34 @@ public class BillyAIService {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
 
+    // Real AI backend: the cPanel server-side Gemini proxy (key stays on the server).
+    // NOTE: this is the cPanel host, NOT the Cloud Run API_BASE_URL.
+    private static final String GEMINI_PROXY = "https://billsense.dev-environment.site/api/gemini/chat";
+
+    // Billy's persona + knowledge. Used for every AI answer so Billy is accurate
+    // and never invents denominations, features, laws, or research details.
+    private static final String SYSTEM_PROMPT =
+            "You are Billy, the AI assistant inside the BillSense Android app — a Philippine peso " +
+            "counterfeit-detection app. Be friendly, concise, use short paragraphs and bullet points, " +
+            "and end with a clear next step. Use emojis sparingly (💵 🔍 ✅).\n\n" +
+            "WHAT YOU HELP WITH:\n" +
+            "1) Telling real Philippine peso bills (New Generation Currency / Enhanced NGC) from fakes — " +
+            "watermark, security thread, serial number, see-through register, concealed value, optically " +
+            "variable ink (OVI), optically variable device (OVD), tactile marks, and the enhanced value " +
+            "panel (EVP) on 500 and 1000-peso bills. Teach the BSP 'Feel, Look, Tilt' method.\n" +
+            "2) Using the BillSense app: Scan Bill (real-time), Multi-Scan, Video Scan, Compare Bill, " +
+            "Scan History, and reporting suspected counterfeits via Evidence Submission / Cases.\n" +
+            "3) Philippine anti-counterfeiting law (RA 10951; Revised Penal Code Art. 168) — educational only.\n\n" +
+            "RESEARCH BACKGROUND (answer accurately if asked who made BillSense / about the study):\n" +
+            "BillSense is a research/thesis by Joy Canutab and co-researchers (Canutab et al.) at the " +
+            "University of the Cordilleras, Baguio City, Philippines. It is an AI-driven mobile app detecting " +
+            "counterfeit vs. genuine PHP banknotes, aimed at everyday users and MSMEs. Trained on 3,113 " +
+            "verified authentic & counterfeit NGC/ENGC banknotes; uses YOLOv8 object detection (with an " +
+            "on-device TFLite fallback). Theoretical frameworks: Human Error Theory, Routine Activity Theory, " +
+            "and Computer Vision Theory; design-thinking methodology; aligned with UN SDG 16 (Target 16.4).\n\n" +
+            "If asked something unrelated to currency, BillSense, or the research, gently steer back. " +
+            "Never invent denominations, security features, laws, statistics, researcher names, or research details.";
+
     public interface BillyCallback {
         void onSuccess(String response);
         void onError(String errorMessage);
@@ -254,16 +282,18 @@ public class BillyAIService {
             String contextualQuery = rewriteQuery(userMessage);
 
             JSONObject json = new JSONObject();
-            json.put("message", contextualQuery);
-            json.put("original_message", userMessage);
-            json.put("agent", "billy");
-
-            // Use the BillSense API for Billy responses
-            String apiUrl = com.app.billsense.BuildConfig.API_BASE_URL + "/api/billy-chat";
+            json.put("model", "gemini-flash-latest");
+            json.put("systemPrompt", SYSTEM_PROMPT);
+            json.put("userMessage", userMessage);
+            json.put("history", new JSONArray());
+            JSONObject genCfg = new JSONObject();
+            genCfg.put("temperature", 0.6);
+            genCfg.put("maxOutputTokens", 1024);
+            json.put("generationConfig", genCfg);
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
             Request request = new Request.Builder()
-                    .url(apiUrl)
+                    .url(GEMINI_PROXY)
                     .post(body)
                     .addHeader("Content-Type", "application/json")
                     .build();
@@ -274,9 +304,10 @@ public class BillyAIService {
                     if (response.isSuccessful() && response.body() != null) {
                         try {
                             String responseBody = response.body().string();
-                            JSONObject responseJson = new JSONObject(responseBody);
-                            String billyResponse = responseJson.optString("response",
-                                    "I'm processing your question. Could you try rephrasing it? \uD83D\uDE0A");
+                            String billyResponse = extractGeminiText(responseBody);
+                            if (billyResponse == null || billyResponse.isEmpty()) {
+                                billyResponse = getFallbackResponse(userMessage);
+                            }
                             callback.onSuccess(billyResponse);
                         } catch (Exception e) {
                             // API returned unexpected format — use fallback
@@ -298,6 +329,27 @@ public class BillyAIService {
         } catch (Exception e) {
             Log.e(TAG, "Error building request: " + e.getMessage());
             callback.onSuccess(getFallbackResponse(userMessage));
+        }
+    }
+
+    /** Extract the assistant text from Google's Gemini response JSON. */
+    private static String extractGeminiText(String body) {
+        try {
+            JSONObject json = new JSONObject(body);
+            JSONArray candidates = json.optJSONArray("candidates");
+            if (candidates == null || candidates.length() == 0) return null;
+            JSONObject content = candidates.getJSONObject(0).optJSONObject("content");
+            if (content == null) return null;
+            JSONArray parts = content.optJSONArray("parts");
+            if (parts == null || parts.length() == 0) return null;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < parts.length(); i++) {
+                sb.append(parts.getJSONObject(i).optString("text", ""));
+            }
+            String out = sb.toString().trim();
+            return out.isEmpty() ? null : out;
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -345,8 +397,16 @@ public class BillyAIService {
     }
 
     private static boolean matchesAny(String input, String... patterns) {
+        // Word-aware matching. Single-word patterns must match a WHOLE word so short
+        // tokens like "hi"/"uv" don't match "this"/"Philippine"/"survey". Multi-word
+        // phrases ("how to scan") still match as substrings.
+        String padded = " " + input.replaceAll("[^a-z0-9]+", " ").trim() + " ";
         for (String pattern : patterns) {
-            if (input.contains(pattern)) return true;
+            if (pattern.contains(" ")) {
+                if (input.contains(pattern)) return true;       // phrase
+            } else if (padded.contains(" " + pattern + " ")) {
+                return true;                                    // whole word
+            }
         }
         return false;
     }
