@@ -178,6 +178,26 @@ public class BillyAIService {
                     "Would you like to know how to protect yourself from receiving counterfeit bills?";
         }
 
+        // Research / About BillSense (who made it, the thesis behind it)
+        if (matchesAny(lower, "who made", "who created", "who developed", "who built", "who conducted",
+                "researcher", "research", "thesis", "canutab", "cordillera", "university",
+                "behind billsense", "about billsense", "creator", "developer", "study")) {
+            return "🎓 About BillSense (the research):\n\n" +
+                    "BillSense is a research/thesis project by Joy Canutab and co-researchers " +
+                    "(Canutab et al.) at the University of the Cordilleras, Baguio City, Philippines.\n\n" +
+                    "📌 Goal: an AI-driven mobile app that detects counterfeit vs. genuine " +
+                    "Philippine banknotes (NGC & ENGC series), helping everyday users and small " +
+                    "businesses (MSMEs) who struggle with manual checks.\n\n" +
+                    "📌 How it works: deep-learning object detection (YOLOv8) trained on 3,113 " +
+                    "verified authentic & counterfeit bills — real-time, no perfect lighting needed.\n\n" +
+                    "📌 Foundations: Human Error Theory, Routine Activity Theory, and Computer " +
+                    "Vision Theory, built with a design-thinking methodology (prototype → user feedback → " +
+                    "expert evaluation).\n\n" +
+                    "📌 Impact: aligned with UN Sustainable Development Goal 16 (Target 16.4 — " +
+                    "reducing illicit financial flows and organized crime).\n\n" +
+                    "Want to see it in action? Tap Scan Bill! 🔍";
+        }
+
         // Help / What can you do
         if (matchesAny(lower, "help", "what can you do", "features", "menu", "options", "guide me")) {
             return "\uD83D\uDE0A Here's what I can help you with:\n\n" +
@@ -187,7 +207,8 @@ public class BillyAIService {
                     "\uD83D\uDCCA Tutorials — Step-by-step guides for each feature\n" +
                     "\uD83D\uDEA8 Reporting — How to submit evidence of counterfeits\n" +
                     "⚖️ Laws — Anti-counterfeiting regulations\n" +
-                    "\uD83D\uDCDA Education — Currency history and design\n\n" +
+                    "\uD83D\uDCDA Education — Currency history and design\n" +
+                    "🎓 About BillSense — The research & team behind the app\n\n" +
                     "Just ask about any of these topics! What would you like to know?";
         }
 

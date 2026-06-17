@@ -19,6 +19,50 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 ## Session history (2026-06)
 
+33. **Cloud Run revived + model-weight backup + live feature work** (2026-06-17,
+    follows entry 32) — went from "main consolidated" to fully live + new features.
+    All changes pushed to `origin/main` (`UserDevAccount1/Billsense-Project`) and
+    auto-deployed to cPanel via CI/CD (each run green).
+
+    a. **Cloud Run ML API restored.** Root cause of the 503 was `BILLING_DISABLED`
+       — the old billing account ("Billsense", `0107E9-7E3F62-50EBCB`) had closed.
+       User re-linked an active billing account; service self-recovered. Verified:
+       `/api/health` 200 `models_loaded:true`, and a real `/api/standard-scan`
+       round-trip correctly detected denomination 500. Keep scale-to-zero to
+       conserve balance. (06-STATUS updated.)
+
+    b. **Model weights backed up (de-risk).** All 6 `.pt` weights were trapped only
+       inside the 9.93 GB GCP image (Artifact Registry is also billing-gated).
+       Extracted them to `Resources/ml-model-weights-backup/` (gitignored, ~311 MB:
+       denomination2 64MB, evp 148MB, ovi 50MB, ovd/security_best 21MB,
+       counterfeit_best 6MB) + a README with redeploy steps. The full service can
+       now be rebuilt anywhere from `docker/` source + these weights.
+
+    c. **Content page → full CRUD** (`src/views/Content.vue`, `src/services/db.js`).
+       Was read+delete only; added create + edit via a modal. Writes go through the
+       SA-authenticated `/api/db` proxy to the same RTDB `Trivia/` & `Tutorials/`
+       nodes the Android app reads, using a Firebase-style push key + the exact
+       fields in `Trivia.java`/`Tutorials.java`. Added `db.js` `update()` + `pushId()`.
+       Proxy has no push op, so create = PATCH parent with a generated key. Verified
+       create/read/edit/delete round-trip = 200. (commit `9fabea7`-era; pushed.)
+
+    d. **Dashboard → live analytics** (`src/views/Dashboard.vue`). Quick Stats were
+       hardcoded "—"; now aggregated from RTDB scan trees (`Standard/Multi/Video
+       Scan/<userId>/<scanId>`): Total Scans (+ per-type), Registered Users (+ how
+       many have scanned), Counterfeit Detected (+ % via `authenticity.status`),
+       Avg Scan Time (`processingTime`), with loading + refresh. Verified live:
+       15 scans / 10 counterfeit / 3.7s avg / 3 users.
+
+    e. **Billy research knowledge — both clients.** Admin `src/views/Billy.vue`
+       SYSTEM_PROMPT and Android `BillyAIService.java` local KB now answer who built
+       BillSense: **Joy Canutab et al., University of the Cordilleras (Baguio City)**,
+       plus purpose (MSME counterfeit detection), NGC/ENGC + 3,113-banknote dataset,
+       YOLOv8 approach, frameworks (Human Error, Routine Activity, Computer Vision),
+       design-thinking methodology, UN SDG 16.4. Sourced from
+       `canutab-thesis-foundation.json`; instructed not to invent beyond it. Verified
+       via a live Gemini round-trip. Android Billy got a matching "About BillSense"
+       handler + help-menu entry; APK rebuilt.
+
 32. **Consolidate to `main` + reconcile TFLite offline-scan + diagnose Cloud Run
     outage** (2026-06-17) — `main` was stale (HEAD `707a550`, 2026-03-21) with a
     117-path uncommitted working tree from a separate ~3-month-old March effort.
