@@ -19,6 +19,26 @@ firebase 11→12, vite 6→8, vue-router 4→5, @vitejs/plugin-vue 5→6.
 
 ## Session history (2026-06)
 
+35. **Mobile fixes: Billy AI, Maps key, consistent signing** (2026-06-17, follows 34)
+    - **Billy AI (mobile)** was broken: `BillyAIService.matchesAny` used substring
+      `contains`, so the greeting token "hi" matched "this/which/Philippine" → almost
+      every question returned the "I'm Billy" greeting; and the AI fallback POSTed to
+      a non-existent `/api/billy-chat` on Cloud Run. Fixed: whole-word matching +
+      route to the real Gemini proxy (`/api/gemini/chat`) with a full knowledge prompt
+      (currency, app usage, PH law, and the Canutab/University of the Cordilleras research).
+    - **Cases map** diagnosed: Google Maps API key restriction (package+SHA) vs the
+      installed build's signature. User supplied a new key; rotated `MAPS_API_KEY` in
+      `local.properties` + the `LOCAL_PROPERTIES` CI secret (key NOT committed), and
+      deleted the key that had been pasted into the public `Trivia` node.
+    - **Consistent signing**: CI now restores a shared debug keystore
+      (`DEBUG_KEYSTORE_B64` secret) so every build — local AND cloud Fire APK — signs
+      with the SAME SHA-1 `39:47:DF:DC:D6:5C:0B:6D:37:59:E4:12:AC:5D:25:FC:6B:39:AC:6D`.
+      This makes the Maps-key allowlist match all builds and lets updates install in place.
+    - Released **v1.4.3 → v1.4.5** to testers (each auto/manually recorded in `apk_releases`).
+    - Open item: register `com.app.billsense` + the SHA-1 above on the Maps key (or keep
+      it unrestricted) so the Cases map loads; Cloud Run scan cold-start latency is
+      scale-to-zero (see entry on warm-up options).
+
 34. **APK distribution end-to-end + cloud Fire APK + project README** (2026-06-17,
     follows entry 33) — closed out the release/distribution pipeline.
     - **APK Management page** now serves distributed builds on the LIVE site:
