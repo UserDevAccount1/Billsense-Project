@@ -91,6 +91,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // --- Cold-start handling: warm the server + auto-retry the WebSocket ---
     private int wsRetryCount = 0;
     private static final int MAX_WS_RETRIES = 6;
+    private volatile boolean wsConnected = false;
     private final android.os.Handler retryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     // --- CameraX Components ---
@@ -154,9 +155,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
                 bindCameraUseCases(cameraProvider);
-                warmUpServer(); // wake Cloud Run (scale-to-zero) before connecting
-                // Connect to the real-time standard scan endpoint
-                scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
+                connectAndWatch(); // warm up + connect + cold-start watchdog
             } catch (Exception e) {
                 Log.e(TAG, "CameraX or WebSocket setup failed", e);
                 Toast.makeText(this, "Failed to initialize scanner.", Toast.LENGTH_SHORT).show();
@@ -172,8 +171,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         if (currentUiState == UiState.READY_TO_CAPTURE && imageAnalysis != null &&
                 ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "onResume: Reconnecting WebSocket for live scan.");
-            warmUpServer();
-            scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
+            connectAndWatch();
         }
     }
 
@@ -204,6 +202,26 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         }
     }
 
+    /**
+     * Connect the live-scan WebSocket with a cold-start watchdog. Because the WS
+     * client uses readTimeout(0), a connection that stalls while Cloud Run spins
+     * up never errors — so if it hasn't opened within 12s we warm up and retry.
+     */
+    private void connectAndWatch() {
+        wsConnected = false;
+        retryHandler.removeCallbacksAndMessages(null);
+        warmUpServer();
+        scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
+        retryHandler.postDelayed(() -> {
+            if (!wsConnected && currentUiState == UiState.READY_TO_CAPTURE && wsRetryCount < MAX_WS_RETRIES) {
+                wsRetryCount++;
+                runOnUiThread(() -> Toast.makeText(this,
+                        "Warming up scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
+                connectAndWatch();
+            }
+        }, 12000);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -217,6 +235,8 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         super.onPause();
         // Disconnect from the WebSocket when the activity is not in the foreground.
         // This is the key fix for the EOFException.
+        retryHandler.removeCallbacksAndMessages(null);
+        wsConnected = false;
         scanManager.disconnect();
         Log.d(TAG, "onPause: WebSocket disconnected.");
     }
@@ -360,8 +380,10 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // --- WebSocket Listener Callbacks ---
     @Override
     public void onConnectionOpen() {
+        wsConnected = true;     // stops the cold-start watchdog
         wsRetryCount = 0;       // connected — clear cold-start retry state
         canSendFrame = true;    // unstick frame sending
+        retryHandler.removeCallbacksAndMessages(null);
         runOnUiThread(() -> Toast.makeText(this, "Live analysis started...", Toast.LENGTH_SHORT).show());
     }
 
@@ -383,13 +405,10 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         if (connissue && currentUiState == UiState.READY_TO_CAPTURE && wsRetryCount < MAX_WS_RETRIES) {
             wsRetryCount++;
             runOnUiThread(() -> Toast.makeText(this,
-                    "Warming up scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
-            warmUpServer();
+                    "Reconnecting scanner… (" + wsRetryCount + "/" + MAX_WS_RETRIES + ")", Toast.LENGTH_SHORT).show());
             retryHandler.postDelayed(() -> {
-                if (currentUiState == UiState.READY_TO_CAPTURE) {
-                    scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
-                }
-            }, 4000);
+                if (currentUiState == UiState.READY_TO_CAPTURE) connectAndWatch();
+            }, 3000);
         } else {
             runOnUiThread(() -> Toast.makeText(this, "Scan Error: " + error, Toast.LENGTH_SHORT).show());
         }

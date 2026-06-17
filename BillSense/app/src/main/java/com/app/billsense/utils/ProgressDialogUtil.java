@@ -9,26 +9,47 @@ import android.view.Window;
 
 import com.app.billsense.R;
 
+/**
+ * Shared loading dialog. Hardened against the classic
+ * "View not attached to window manager" crash: it never reuses a dialog across
+ * activities, never shows on a finishing/destroyed activity, and swallows
+ * dismiss errors.
+ */
 public class ProgressDialogUtil {
     private static Dialog progressDialog;
 
     public static void showProgressDialog(Context context) {
-        if (progressDialog == null) {
-            progressDialog = new Dialog(context);
-            progressDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-            progressDialog.setContentView(R.layout.progress_dialog);
-            progressDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            progressDialog.setCancelable(false); // Set to true if you want it to be cancelable
-            progressDialog.setCanceledOnTouchOutside(false);
+        // Drop any stale dialog (possibly tied to a finished activity) first.
+        hideProgressDialog();
+
+        if (!(context instanceof Activity)) return;
+        Activity activity = (Activity) context;
+        if (activity.isFinishing() || activity.isDestroyed()) return;
+
+        try {
+            Dialog d = new Dialog(context);
+            d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+            d.setContentView(R.layout.progress_dialog);
+            if (d.getWindow() != null) {
+                d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            }
+            d.setCancelable(false);
+            d.setCanceledOnTouchOutside(false);
+            d.show();
+            progressDialog = d;
+        } catch (Exception e) {
+            progressDialog = null;
         }
-        progressDialog.show();
     }
 
     public static void hideProgressDialog() {
-        if (progressDialog != null && progressDialog.isShowing()) {
-            progressDialog.dismiss();
-            progressDialog = null; // Reset to null after dismissing
+        Dialog d = progressDialog;
+        progressDialog = null;
+        if (d == null) return;
+        try {
+            if (d.isShowing()) d.dismiss();
+        } catch (Exception ignored) {
+            // Activity window already gone — nothing to dismiss.
         }
     }
-
 }

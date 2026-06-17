@@ -28,8 +28,8 @@ android {
         applicationId = "com.app.billsense"
         minSdk = 24
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.4.6"
+        versionCode = 12
+        versionName = "1.4.7"
 
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${project.properties["FIREBASE_PROJECT_ID"]}\"")
@@ -47,8 +47,8 @@ android {
         create("user") {
             dimension = "app"
             applicationId = "com.app.billsense"
-            versionCode = 11
-            versionName = "1.4.6"
+            versionCode = 12
+            versionName = "1.4.7"
             resValue("string", "app_label", "BillSense")
             buildConfigField("String", "APP_VARIANT", "\"main\"")
         }
