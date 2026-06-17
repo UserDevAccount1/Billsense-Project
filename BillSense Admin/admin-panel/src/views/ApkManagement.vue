@@ -145,6 +145,14 @@
                 <button class="icon-btn download" @click="downloadApk(build)" title="Download APK">
                   <span class="material-icons">download</span>
                 </button>
+                <button
+                  v-if="build.downloadUrl"
+                  class="icon-btn share"
+                  @click="openShare(build)"
+                  title="Distribute — send install link to a tester"
+                >
+                  <span class="material-icons">share</span>
+                </button>
                 <button class="icon-btn delete" @click="confirmDelete(build)" title="Delete Build">
                   <span class="material-icons">delete</span>
                 </button>
@@ -328,6 +336,45 @@
       </div>
     </div>
 
+    <!-- Distribute / Share Modal -->
+    <div class="modal-overlay" v-if="shareTarget" @click.self="shareTarget = null">
+      <div class="modal-card compact">
+        <div class="modal-header">
+          <h2><span class="material-icons" style="color: var(--accent);">share</span> Distribute v{{ shareTarget.version }}</h2>
+          <button class="close-btn" @click="shareTarget = null"><span class="material-icons">close</span></button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:16px;">
+            Send this Firebase App Distribution install link to a tester. They open it on their
+            Android device (signed in as a registered tester) to install
+            <strong>{{ shareTarget.variant === 'admin' ? 'BillSense Admin' : 'BillSense' }}</strong>.
+          </p>
+          <div class="form-group">
+            <label>Install link</label>
+            <div style="display:flex;gap:8px;">
+              <input :value="shareTarget.downloadUrl" readonly style="flex:1;" />
+              <button class="apk-btn secondary" @click="copyShareLink"><span class="material-icons">content_copy</span> Copy</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Send to a tester by email</label>
+            <div style="display:flex;gap:8px;">
+              <input v-model="shareEmail" type="email" placeholder="tester@example.com" style="flex:1;" @keydown.enter.prevent="sendShareEmail" />
+              <button class="apk-btn primary" :disabled="!shareEmail" @click="sendShareEmail"><span class="material-icons">send</span> Send</button>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);line-height:1.5;">
+            Note: recipients must be added as testers in Firebase App Distribution to install
+            (Firebase console → App Distribution → Testers &amp; Groups). The link opens the install page.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="apk-btn secondary" @click="shareTarget = null">Close</button>
+          <button class="apk-btn primary" @click="openInstall(shareTarget)"><span class="material-icons">open_in_new</span> Open install page</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Pipeline Progress Panel -->
     <div class="pipeline-panel" v-if="pipelineRunning || pipelineResult">
       <div class="pipeline-header">
@@ -394,6 +441,8 @@ export default {
       newBuild: { variant: 'user', buildType: 'debug', description: '' },
       envStatus: null,
       deleteTarget: null,
+      shareTarget: null,
+      shareEmail: '',
       // Pipeline state
       pipelineRunning: false,
       pipelineBuildId: null,
@@ -821,6 +870,36 @@ export default {
       }
     },
 
+    // ===== Distribute / Share =====
+    openShare(build) {
+      this.shareTarget = build
+      this.shareEmail = ''
+    },
+    async copyShareLink() {
+      try {
+        await navigator.clipboard.writeText(this.shareTarget.downloadUrl)
+        this.showToast('Install link copied — send it to your tester', 'success')
+      } catch {
+        this.showToast('Copy failed — select and copy the link manually', 'error')
+      }
+    },
+    sendShareEmail() {
+      const b = this.shareTarget
+      if (!this.shareEmail) return
+      const subject = encodeURIComponent(`Install BillSense ${b.version} (test build)`)
+      const body = encodeURIComponent(
+        `You're invited to test BillSense v${b.version}.\n\n` +
+        `Install link (open on your Android device, signed in as a registered tester):\n${b.downloadUrl}\n\n` +
+        `If it doesn't open, you may need to be added as a tester in Firebase App Distribution.`
+      )
+      window.location.href = `mailto:${this.shareEmail}?subject=${subject}&body=${body}`
+      this.showToast('Opening your email app…', 'success')
+    },
+    openInstall(build) {
+      window.open(build.downloadUrl, '_blank', 'noopener')
+      this.showToast('Opening install page…', 'success')
+    },
+
     // ===== Delete =====
     confirmDelete(build) {
       this.deleteTarget = build
@@ -1158,6 +1237,7 @@ export default {
 .icon-btn .material-icons { font-size: 18px; }
 .icon-btn.delete:hover { color: #EF4444; border-color: #EF4444; }
 .icon-btn.download:hover { color: #3B82F6; border-color: #3B82F6; }
+.icon-btn.share:hover { color: #FFA31A; border-color: #FFA31A; }
 .icon-btn.emulator:hover { color: #22C55E; border-color: #22C55E; }
 .icon-btn.emulator .material-icons { animation: none; }
 .icon-btn.emulator:disabled .material-icons { animation: spin 1s linear infinite; }
