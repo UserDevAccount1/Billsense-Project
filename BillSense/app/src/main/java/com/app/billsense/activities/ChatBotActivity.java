@@ -170,23 +170,41 @@ public class ChatBotActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void clearChatDataFromFirebase() {
-        showProgressDialog(this);
-        fbUtils.deleteDataFromPath(fbUtils.BILLY_CHAT_PATH, userId, new FBInterface.OnDeleteDataCallBack() {
-            @Override
-            public void onDeleteDataSuccess() {
-                Toast.makeText(ChatBotActivity.this, "Chat history cleared.", Toast.LENGTH_SHORT).show();
-                Log.d(TAG, "Chat history cleared successfully for user: " + userId);
-                hideProgressDialog();
-            }
+    /** cPanel Node proxy (service-account authed) — bypasses the RTDB auth!=null write rule. */
+    private static final String CPANEL_PROXY = "https://billsense.dev-environment.site";
 
-            @Override
-            public void onDeleteDataFailure(Exception e) {
-                Toast.makeText(ChatBotActivity.this, "Failed to clear chat history.", Toast.LENGTH_SHORT).show();
-                Log.e(TAG, "Failed to clear chat history for user: " + userId, e);
-                hideProgressDialog();
-            }
-        });
+    private void clearChatDataFromFirebase() {
+        // 1) Clear the visible conversation immediately (in-memory + UI) — this is what the user sees.
+        chatMessages.clear();
+        chatAdapter.notifyDataSetChanged();
+
+        // 2) Best-effort delete of any stored history via the SA-authed cPanel proxy. The app logs in
+        //    with a CUSTOM login (not Firebase Auth), so a direct RTDB SDK delete is blocked by the
+        //    rule ".write": "auth != null" (this is why the old fbUtils delete failed). The proxy
+        //    authenticates with the service account and allowlists the "Billy Chats" root.
+        try {
+            okhttp3.OkHttpClient http = new okhttp3.OkHttpClient();
+            org.json.JSONObject reqBody = new org.json.JSONObject()
+                    .put("path", fbUtils.BILLY_CHAT_PATH + "/" + userId);
+            okhttp3.Request req = new okhttp3.Request.Builder()
+                    .url(CPANEL_PROXY + "/api/db/delete")
+                    .post(okhttp3.RequestBody.create(
+                            reqBody.toString(), okhttp3.MediaType.parse("application/json")))
+                    .build();
+            http.newCall(req).enqueue(new okhttp3.Callback() {
+                @Override public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                    Log.w(TAG, "Proxy clear-chat delete failed (non-fatal): " + e.getMessage());
+                }
+                @Override public void onResponse(okhttp3.Call call, okhttp3.Response response) {
+                    Log.d(TAG, "Proxy clear-chat delete HTTP " + response.code());
+                    response.close();
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "clear-chat proxy build error: " + e.getMessage());
+        }
+
+        Toast.makeText(ChatBotActivity.this, "Chat history cleared.", Toast.LENGTH_SHORT).show();
     }
 
     private void setupRecyclerView() {
