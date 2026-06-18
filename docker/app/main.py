@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.15")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.16")
 
 # CORS
 app.add_middleware(
@@ -474,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.15',
+            'logic_version': '17.16',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -1423,17 +1423,13 @@ def combine_features_across_images(all_features: List[Dict[str, bool]]) -> Dict[
     if not all_features:
         return {}
     
-    # Initialize with all possible features set to False
+    # Initialize with the FULL feature set set to False (union across frames).
     combined = {
-        'concealed_value': False,
-        'security_thread': False,
-        'serial_number': False,
-        'value': False,
-        'watermark': False,
-        'see_through_mark': False,
-        'optically_variable_ink': False,
-        'ovd': False,
-        'enhanced_value_panel': False
+        'value': False, 'serial_number': False, 'security_thread': False, 'concealed_value': False,
+        'watermark': False, 'value_watermark': False, 'see_through_mark': False, 'uv_thread': False,
+        'symbol_of_nature': False, 'shadow_thread': False,
+        'optically_variable_ink': False, 'optically_variable_thread': False, 'ovd': False,
+        'enhanced_value_panel': False,
     }
     
     # Update with detected features from each image
@@ -1442,8 +1438,26 @@ def combine_features_across_images(all_features: List[Dict[str, bool]]) -> Dict[
             for feature, detected in features.items():
                 if detected and feature in combined:
                     combined[feature] = True
-    
+
     return combined
+
+def persistent_counterfeit_markers(marker_dicts: List[Dict[str, bool]]) -> Dict[str, bool]:
+    """Deep-scan rule: a forgery marker only counts if it PERSISTS across frames.
+    A one-off spurious false_* on a single frame must NOT condemn a genuine note —
+    we can't assume counterfeit because one feature flickered. A marker must fire in
+    >=2 frames AND in >=40% of observed frames to be treated as a real forgery signal.
+    Returns a counterfeit_indicators-style dict ({marker: True}) of the persistent ones."""
+    if not marker_dicts:
+        return {}
+    total = len(marker_dicts)
+    counts: Dict[str, int] = {}
+    for md in marker_dicts:
+        if md:
+            for k, v in md.items():
+                if v:
+                    counts[k] = counts.get(k, 0) + 1
+    threshold = max(2, int(round(0.4 * total)))
+    return {k: True for k, c in counts.items() if c >= threshold}
 
 def extract_best_frame_from_video(video_path: str) -> np.ndarray:
     """Extract the best frame from video based on quality and feature detection"""
@@ -1538,6 +1552,7 @@ async def real_time_standard_scan(websocket: WebSocket):
         accumulated_results = {
             "denominations": [],
             "features": [],
+            "counterfeit_markers": [],
             "authenticity_results": []
         }
         
@@ -1563,17 +1578,23 @@ async def real_time_standard_scan(websocket: WebSocket):
                     if accumulated_results["denominations"]:
                         final_denomination = get_consensus_denomination(accumulated_results["denominations"])
                         combined_features = combine_features_across_images(accumulated_results["features"])
-                        
-                        # Create final authenticity evaluation
+                        final_high = is_high_denomination(final_denomination)
+                        # Persistent forgery markers from the whole scan (deep-scan rule) — NOT a
+                        # hardcoded empty dict, so a real fake actually gets caught at completion.
+                        final_markers = persistent_counterfeit_markers(accumulated_results["counterfeit_markers"])
+                        final_detected = sum(1 for v in combined_features.values() if v) if combined_features else 0
+                        final_total = 9 if final_high else 6
+
+                        # Create final authenticity evaluation from accumulated evidence
                         features_result = {
                             "security_features": combined_features,
-                            "counterfeit_indicators": {"false_enhanced_value_panel": False},
-                            "is_high_denomination": is_high_denomination(final_denomination),
-                            "total_expected_features": 9 if is_high_denomination(final_denomination) else 6,
-                            "detected_features_count": sum(combined_features.values()) if combined_features else 0,
-                            "coverage_percentage": (sum(combined_features.values()) / (9 if is_high_denomination(final_denomination) else 6)) * 100 if combined_features else 0
+                            "counterfeit_indicators": final_markers,
+                            "is_high_denomination": final_high,
+                            "total_expected_features": final_total,
+                            "detected_features_count": final_detected,
+                            "coverage_percentage": min(100.0, (final_detected / final_total) * 100) if final_total else 0
                         }
-                        
+
                         final_authenticity = evaluate_counterfeit(final_denomination, features_result)
                         
                         # Create annotated image from best frame
@@ -1688,29 +1709,59 @@ async def real_time_standard_scan(websocket: WebSocket):
                             feature_dict = {feature: True for feature in result["detected_features"]}
                         
                         accumulated_results["features"].append(feature_dict)
-                        
+                        accumulated_results["counterfeit_markers"].append(result.get("counterfeit_indicators", {}))
+
                         if result.get("authenticity"):
                             accumulated_results["authenticity_results"].append(result["authenticity"])
-                        
-                        # Send real-time results with ALL data simultaneously
+
+                        # --- DEEP ACCUMULATION (v17.16) ---
+                        # The longer / steadier / closer the scan, the more evidence we gather.
+                        # Genuine features accumulate as a UNION across frames (a watermark seen
+                        # in ANY frame counts), while forgery markers must PERSIST across frames
+                        # before they condemn — one spurious false_* frame is washed out. So the
+                        # live verdict reflects the BEST accumulated evidence, not a single frame.
+                        acc_denom = get_consensus_denomination(accumulated_results["denominations"])
+                        acc_features = combine_features_across_images(accumulated_results["features"])
+                        acc_high = is_high_denomination(acc_denom)
+                        acc_markers = persistent_counterfeit_markers(accumulated_results["counterfeit_markers"])
+                        acc_detected = sorted([f for f, v in acc_features.items() if v])
+                        acc_count = len(acc_detected)
+                        # Stable denominator from the accumulated denomination (NOT the per-frame
+                        # total, which bounces frame-to-frame and breaks monotonic coverage). The
+                        # union count is non-decreasing, so coverage now only ever climbs.
+                        acc_total = 9 if acc_high else 6
+                        acc_coverage = round(min(100.0, (acc_count / acc_total) * 100), 1) if acc_total else 0
+                        acc_features_result = {
+                            "security_features": acc_features,
+                            "counterfeit_indicators": acc_markers,
+                            "is_high_denomination": acc_high,
+                            "total_expected_features": acc_total,
+                            "detected_features_count": acc_count,
+                            "coverage_percentage": acc_coverage,
+                        }
+                        acc_quality = quality_metrics.get("overall_quality") if isinstance(quality_metrics, dict) else None
+                        acc_auth = evaluate_counterfeit(acc_denom, acc_features_result, overall_quality=acc_quality)
+
+                        # Send real-time results — ACCUMULATED across the whole scan so far
                         await websocket.send_json({
                             "status": "analyzing",
                             "frame_number": frame_count,
-                            "message": f"Real-time detection - Frame {frame_count}",
-                            "denomination": result.get("denomination", "UNKNOWN"),
-                            "features_detected": result.get("detected_features", []),
-                            "feature_count": result.get("feature_count", 0),
-                            "total_expected_features": result.get("total_expected_features", 0),
-                            "coverage_percentage": result.get("coverage_percentage", 0),
-                            "confidence_score": result.get("confidence_score", 0),
-                            "authenticity": result.get("authenticity", {}).get("status", "UNKNOWN"),
-                            "is_genuine": result.get("authenticity", {}).get("is_genuine", False),
-                            "is_high_denomination": result.get("is_high_denomination", False),
-                            "has_false_evp": result.get("has_false_evp", False),
+                            "message": f"Deep analysis - {acc_count}/{acc_total} features verified over {frame_count} frames",
+                            "denomination": acc_denom,
+                            "features_detected": acc_detected,
+                            "feature_count": acc_count,
+                            "total_expected_features": acc_total,
+                            "coverage_percentage": acc_coverage,
+                            "confidence_score": acc_auth.get("authenticity_score", acc_auth.get("confidence_score", 0)),
+                            "authenticity": acc_auth.get("status", "UNKNOWN"),
+                            "is_genuine": acc_auth.get("is_genuine", False),
+                            "is_high_denomination": acc_high,
+                            "has_false_evp": acc_markers.get("false_enhanced_value_panel", False),
+                            "frame_features": result.get("detected_features", []),
                             "quality_metrics": quality_metrics,
                             "quality_feedback": quality_check["feedback"] if not quality_check["is_acceptable"] else [],
                             "processing_mode": "parallel",
-                            "recommendation": "Position bill to detect more features, then press Complete Scan"
+                            "recommendation": "Hold steady and move closer to verify more features, then press Complete Scan"
                         })
                             
                     except Exception as frame_error:
@@ -2408,7 +2459,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.15",
+            "logic_version": "17.16",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2498,7 +2549,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.15",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.16",
     }
     try:
         from billy_rag import billy_rag
@@ -2829,7 +2880,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.15",
+                "logic_version": "17.16",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2874,7 +2925,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.15",
+        "api_version": "17.16",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
