@@ -1,0 +1,166 @@
+Philippine Currency Detection Project – Detailed Documentation 
+1. Project Overview 
+This project implements a machine learning–based detection and authentication system for 
+Philippine banknotes, using YOLOv8 object detection models trained on annotated datasets. 
+The system detects real currency features (both visible-light and UV-light features) and 
+provides predictions through a FastAPI-based inference service deployed on Google Cloud 
+Run. 
+ 
+The end-users (mobile app or external systems) interact only with the API, which provides 
+both JSON output and annotated media (images or videos) depending on the request. 
+2. Dataset 
+Source: Dataset from Roboflow, consisting of annotated Philippine banknotes under both 
+normal and UV light. 
+Two types of datasets were used for two different models, each dataset consisted of ~7k 
+images that were split into appropriate train, test and validation sets. 
+Format: YOLOv8 OBB (Oriented Bounding Boxes). This allows detection of rotated 
+banknotes and UV-thread features at arbitrary angles. 
+3. Classes 
+The project uses two separate models with distinct class sets. 
+a) Simple Currency Model (simple_model.pt) 
+Purpose: Detects and classifies banknotes as real or fake under normal lighting conditions. 
+Classes: 
+- Real 
+- Fake 
+b) UV Feature Model (uv_model.pt) 
+Purpose: Detects security features visible under UV light. 
+Classes: 
+- concealed-value 
+ 
+ 
+
+- value 
+ 
+- serial-number 
+ 
+- optically-variable-thread 
+ 
+- security-thread 
+ 
+- UV-thread(only visible under UV light) 
+ 
+    Special Rule in API: For UV-thread, only the bounding box is drawn (no label/score) to 
+avoid clutter when many threads are present. 
+
+Dataset Limitation (Important Note) 
+The UV model cannot detect some important security features because they were absent in 
+the annotated dataset from Roboflow. 
+Currently missing classes include: 
+- Watermark 
+- See-through mark 
+- Hologram 
+- Currency denomination 
+ 
+These shortcomings are entirely due to the dataset, since these features are rarely 
+annotated or included. 
+   Solution: The UV model can be retrained using a more comprehensive dataset that 
+includes these missing classes, allowing full detection capability. 
+4. Preprocessing 
+Both training and inference use standard YOLO preprocessing: 
+- Auto-orientation: Fixes EXIF orientation issues (rotated images). 
+- Letterboxing: Resizes image to 640×640 while preserving aspect ratio and padding with 
+gray. 
+- Color Preservation: RGB maintained for proper feature detection. 
+5. Model Training 
+Framework: YOLOv8 (Ultralytics). 
+Augmentations: Random rotations, scaling, and flips (handled by YOLOv8). 
+ 
+Hyperparameters: 
+- Image size: 640 
+- Batch size: auto-tuned to GPU memory 
+- Epochs: ~100 (with early stopping) 
+ 
+Models saved: 
+- simple_model.pt → normal banknote detection. 
+- uv_model.pt → UV security feature detection. 
+6. Results 
+Both models achieved >90% confidence on test sets. 
+UV-thread detection generates many boxes but is simplified in output. 
+Models are robust to rotated and angled banknotes due to OBB training. 
+7. API – FastAPI Service 
+7.1 Endpoints 
+Single Image Endpoint 
+POST /predict/{model_type}/image 
+- model_type: simple or uv 
+- Input: file (image upload) OR url (image URL). 
+- Query params: 
+   return_media = true → return annotated JPEG image. 
+  conf_threshold = float (default 0.15). 
+- Output: JSON (predictions) OR JPEG (if return_media=true). 
+Video Endpoint 
+POST /predict/{model_type}/video 
+- model_type: simple or uv. 
+- Input: file (video upload) OR url (video URL). 
+- Query params: 
+   - return_media = true → return annotated MP4 video. 
+   - conf_threshold = float. 
+- Output: JSON (all frame predictions) OR MP4 file. 
+7.2 JSON Output Format 
+For single image: 
+{ 
+  "predictions": [ 
+    { 
+      "class": "banknote", 
+      "confidence": 0.97, 
+      "points": [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] 
+    } 
+  ] 
+} 
+For video: 
+{ 
+  "frame_count": 120, 
+  "predictions": [ 
+    { 
+      "frame": 1, 
+      "class": "uv-thread", 
+      "confidence": 0.85, 
+      "points": [[...]] 
+    } 
+  ] 
+} 
+8. Deployment 
+Platform: Google Cloud Run. 
+Containerization: Built with Docker. 
+ 
+Deployment Steps: 
+1. Build Docker image with FastAPI + models. 
+2. Push image to Google Artifact Registry. 
+3. Deploy service to Cloud Run with autoscaling and HTTPS enabled. 
+ 
+Final Base URL: 
+https://fast-api-app-340624938055.asia-southeast2.run.app 
+ 
+9. Usage Examples (PowerShell / Windows Commands) 
+Single Image Prediction 
+curl.exe -X POST "https://fast-api-app-340624938055.asia-
+southeast2.run.app/predict/simple/image?return_media=false" ` 
+     -H "Content-Type: multipart/form-data" ` 
+     -F "file=@D:\Projects\Client\Philippine Currency Detection Using 
+YoloV8\test_images\test_image.jpg" 
+Single Image Prediction with Annotated Image 
+curl.exe -X POST "https://fast-api-app-340624938055.asia-
+southeast2.run.app/predict/uv/image?return_media=true" ` 
+     -H "Content-Type: multipart/form-data" ` 
+     -F "file=@D:\Projects\Client\Philippine Currency Detection Using 
+YoloV8\test_images\test_image.jpg" ` 
+     --output annotated.jpg 
+Video Prediction (Annotated Video Returned) 
+curl.exe -X POST "https://fast-api-app-340624938055.asia-
+southeast2.run.app/predict/simple/video?return_media=true" ` 
+     -H "Content-Type: multipart/form-data" ` 
+     -F "file=@D:\Projects\Client\Philippine Currency Detection Using 
+YoloV8\test_images\test_video.mp4" ` 
+     --output annotated_video.mp4 
+Video Prediction (JSON Only) 
+curl.exe -X POST "https://fast-api-app-340624938055.asia-
+southeast2.run.app/predict/uv/video?return_media=false" ` 
+     -H "Content-Type: multipart/form-data" ` 
+     -F "file=@D:\Projects\Client\Philippine Currency Detection Using 
+YoloV8\test_images\test_video.mp4" 
+10. Key Notes for Developers 
+• Always check model_type (simple vs uv). 
+• Use return_media=true if annotated image/video is needed. 
+• JSON always contains raw prediction details (bounding box coordinates, class, 
+confidence). 
+• For videos, predictions are aggregated frame-by-frame with frame number. 
+• UV-thread detections will not clutter output with labels, only bounding boxes. 

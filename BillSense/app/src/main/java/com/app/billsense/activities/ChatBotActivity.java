@@ -85,6 +85,7 @@ public class ChatBotActivity extends AppCompatActivity {
         addWelcomeMessageAsFirst();
 
         setupSendButton();
+        setupSuggestionChips();
 
         if (userId != null && !userId.isEmpty()) {
             getChatHistory();
@@ -108,6 +109,38 @@ public class ChatBotActivity extends AppCompatActivity {
         }
         toolbar.setNavigationOnClickListener(view -> finish());
     }
+
+    /** Tap-to-ask starter questions so users can see what Billy can do. */
+    private void setupSuggestionChips() {
+        if (binding.suggestionsContainer == null) return;
+        String[][] prompts = {
+                {"Check a ₱1000", "How do I verify a 1000 peso bill is genuine?"},
+                {"How does it work?", "How does BillSense detect counterfeits? Do you use CNN or ORB?"},
+                {"Counterfeit law", "What is the Philippine law on counterfeit money? (educational)"},
+                {"About the research", "Tell me about the BillSense research and Joy Canutab's study."},
+                {"Multi-Scan vs Standard", "What's the difference between Standard scan and Multi-Scan?"},
+                {"Why was my bill flagged?", "Why might a genuine bill get a low authenticity score?"}
+        };
+        binding.suggestionsContainer.removeAllViews();
+        for (String[] p : prompts) {
+            com.google.android.material.chip.Chip chip = new com.google.android.material.chip.Chip(this);
+            chip.setText(p[0]);
+            chip.setCheckable(false);
+            chip.setClickable(true);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(12);
+            chip.setLayoutParams(lp);
+            final String question = p[1];
+            chip.setOnClickListener(v -> {
+                addUserMessage(question);
+                fetchChatResponseFromApi(question);
+            });
+            binding.suggestionsContainer.addView(chip);
+        }
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater inflater = getMenuInflater();
@@ -129,6 +162,7 @@ public class ChatBotActivity extends AppCompatActivity {
                 .setTitle("Clear Chat History")
                 .setMessage("Are you sure you want to permanently delete all chat messages for this conversation?")
                 .setPositiveButton("Clear", (dialog, which) -> {
+                    com.app.billsense.api.pojo.BillyAIService.resetConversation();
                     clearChatDataFromFirebase();
                 })
                 .setNegativeButton("Cancel", null)

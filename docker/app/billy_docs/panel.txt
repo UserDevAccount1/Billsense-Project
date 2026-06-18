@@ -1,0 +1,20 @@
+Dr. Cawi
+What will be the advantage of the proposed prototype over other applications? 
+Where is the Business Model Canvas? (Put in the proposal manuscript)
+Look into the challenges of the existing applications, possibility where it will be used by the industry? Banks/industry will be the target for the user story. 
+Justify the authority to conduct the study. As criminologist, what will be your contribution in your study? 
+Developer must be on the same level (Master’s level)
+Dr. Ablaza 
+What is the extent of the participation of your developer? 
+Consider your timeframe. 
+Output of the study will be “working prototype”
+Look at the limitations and scope of the study. 
+Consider the phases of your study. Phase 1 and Phase 2. 
+Consider Phase 1 for now. 
+How will it be used as evidence in the court?
+Research on the use/admissibility of this in court? 
+Who will maintain the storage management. 
+Dr. Togana 
+How will you address the possibility of reverse engineer, where they can use this security features?
+How will you ensure that app will not reveal all genuine currency features?
+Strengthen the security.

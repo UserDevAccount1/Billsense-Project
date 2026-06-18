@@ -146,6 +146,13 @@ public class BillyAIService {
     // NOTE: this is the cPanel host, NOT the Cloud Run API_BASE_URL.
     private static final String GEMINI_PROXY = "https://billsense.dev-environment.site/api/gemini/chat";
 
+    // v2: server-side Billy brain (FAISS RAG over the docs + guardrails + Gemini 3.1) on Cloud Run.
+    private static final String BILLY_ENDPOINT =
+            com.app.billsense.BuildConfig.API_BASE_URL + "/api/billy/chat";
+    // Optional last-scan context for the "Explain my scan" feature.
+    private static volatile String scanContext = null;
+    public static void setScanContext(String s) { scanContext = s; }
+
     // Billy's persona + knowledge. Used for every AI answer so Billy is accurate
     // and never invents denominations, features, laws, or research details.
     private static final String SYSTEM_PROMPT =
@@ -241,10 +248,16 @@ public class BillyAIService {
         return null;
     }
 
-    /** Offline answer: the canned knowledge base if it matches, else a generic helpful fallback. */
+    /** Offline answer: canned KB → offline thesis RAG → generic helpful fallback. */
     private static String offlineAnswer(String userMessage) {
         String kb = getLocalResponse(userMessage);
-        return kb != null ? kb : offlineAnswer(userMessage);
+        if (kb != null) return kb;
+        String excerpt = retrieveThesis(userMessage);
+        if (excerpt != null) {
+            return "I'm offline right now, but here's what the BillSense research says:\n\n" + excerpt
+                    + "\nReconnect for a full answer. 🔍";
+        }
+        return getFallbackResponse(userMessage);
     }
 
     /**
@@ -458,9 +471,6 @@ public class BillyAIService {
      */
     private static void fetchFromAPI(String userMessage, @NonNull BillyCallback callback) {
         try {
-            // Rewrite query for better context
-            String contextualQuery = rewriteQuery(userMessage);
-
             // Conversation memory: send prior turns so Billy handles follow-ups.
             JSONArray historyArr = new JSONArray();
             synchronized (HISTORY) {
@@ -468,26 +478,17 @@ public class BillyAIService {
                     historyArr.put(new JSONObject().put("role", turn[0]).put("text", turn[1]));
                 }
             }
-            // RAG: retrieve relevant thesis excerpts and ground the question on them.
-            String excerpt = retrieveThesis(userMessage);
-            String sendMessage = (excerpt != null)
-                    ? ("Relevant excerpts from the BillSense thesis (Canutab et al.) — use them if helpful "
-                       + "and do not invent beyond them:\n" + excerpt + "\nUser question: " + userMessage)
-                    : userMessage;
-
+            // Server does the FAISS retrieval + guardrails + Gemini 3.1; we just send the question.
             JSONObject json = new JSONObject();
-            json.put("model", "gemini-3.1-flash-lite");   // Gemini 3.1 (flash-lite tier is within quota)
-            json.put("systemPrompt", SYSTEM_PROMPT);
-            json.put("userMessage", sendMessage);
+            json.put("message", userMessage);
             json.put("history", historyArr);
-            JSONObject genCfg = new JSONObject();
-            genCfg.put("temperature", 0.6);
-            genCfg.put("maxOutputTokens", 1024);
-            json.put("generationConfig", genCfg);
+            if (scanContext != null && !scanContext.isEmpty()) {
+                json.put("scanContext", scanContext);
+            }
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
             Request request = new Request.Builder()
-                    .url(GEMINI_PROXY)
+                    .url(BILLY_ENDPOINT)
                     .post(body)
                     .addHeader("Content-Type", "application/json")
                     .build();
@@ -497,32 +498,40 @@ public class BillyAIService {
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                     if (response.isSuccessful() && response.body() != null) {
                         try {
-                            String responseBody = response.body().string();
-                            String billyResponse = extractGeminiText(responseBody);
-                            if (billyResponse == null || billyResponse.isEmpty()) {
-                                billyResponse = offlineAnswer(userMessage);
+                            JSONObject jr = new JSONObject(response.body().string());
+                            String answer = jr.optString("answer", "");
+                            if (answer.isEmpty()) {
+                                callback.onSuccess(offlineAnswer(userMessage));
+                                return;
                             }
-                            recordTurn(userMessage, billyResponse);
-                            callback.onSuccess(billyResponse);
+                            recordTurn(userMessage, answer);   // memory keeps the clean answer
+                            // Append source citations (the documents Billy drew from)
+                            JSONArray srcs = jr.optJSONArray("sources");
+                            if (srcs != null && srcs.length() > 0) {
+                                StringBuilder sb = new StringBuilder(answer).append("\n\n📚 Sources: ");
+                                for (int i = 0; i < srcs.length(); i++) {
+                                    if (i > 0) sb.append(" · ");
+                                    sb.append(srcs.optString(i));
+                                }
+                                answer = sb.toString();
+                            }
+                            callback.onSuccess(answer);
                         } catch (Exception e) {
-                            // API returned unexpected format — use fallback
                             callback.onSuccess(offlineAnswer(userMessage));
                         }
                     } else {
-                        // API error — use intelligent fallback
                         callback.onSuccess(offlineAnswer(userMessage));
                     }
                 }
 
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    Log.e(TAG, "API call failed: " + e.getMessage());
-                    // Network error — use intelligent fallback
+                    Log.e(TAG, "Billy endpoint failed: " + e.getMessage());
                     callback.onSuccess(offlineAnswer(userMessage));
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error building request: " + e.getMessage());
+            Log.e(TAG, "Error building Billy request: " + e.getMessage());
             callback.onSuccess(offlineAnswer(userMessage));
         }
     }
