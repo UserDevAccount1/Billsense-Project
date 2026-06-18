@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.12")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.13")
 
 # CORS
 app.add_middleware(
@@ -157,7 +157,16 @@ class LazyModelLoader:
             print("🔄 Loading counterfeit model...")
             self.models['counterfeit'] = YOLO("models/counterfeit_best.pt")
             print("✅ Counterfeit model loaded")
-            
+
+            # Merged security/counterfeit model: genuine security features + FALSE markers
+            # (watermark, see-through, shadow thread, threads, OVI, EVP + false_* versions).
+            try:
+                self.models['securitycf'] = YOLO("models/securitycf.pt")
+                print("✅ Security-CF model loaded")
+            except Exception as e:
+                self.models['securitycf'] = None
+                print(f"🟡 securitycf model not available (skipping): {e}")
+
             self.loaded = True
             print("✅ All models loaded successfully!")
             
@@ -182,6 +191,7 @@ class LazyModelLoader:
             self.models['ovd'] = DummyModel("ovd")
             self.models['evp'] = DummyModel("evp")
             self.models['counterfeit'] = DummyModel("counterfeit")
+            self.models['securitycf'] = None
             self.loaded = True
             print("🟡 Using dummy models due to loading error")
     
@@ -209,6 +219,11 @@ OVI_CLASSES = ['optically variable ink']
 OVD_CLASSES = ['ovd']
 EVP_CLASSES = ['1k enhanced value panel', '500 enhanced value panel', 'false 1k enhanced value panel', 'false 500 enhanced value panel']
 COUNTERFEIT_MODEL_CLASSES = ['UV-thread', 'concealed-value', 'security-thread', 'serial-number', 'symbol-of-nature', 'value']
+# Merged security/counterfeit model (securitycf.pt): 8 genuine features + 8 FALSE markers.
+SECURITYCF_CLASSES = ['bill', 'watermark', 'see_through_mark', 'shadow_thread', 'security_thread',
+                      'concealed_value', 'enhanced_value_panel', 'ovi',
+                      'false_bill', 'false_watermark', 'false_see_through_mark', 'false_shadow_thread',
+                      'false_security_thread', 'false_concealed_value', 'false_enhanced_value_panel', 'false_ovi']
 
 NUMBER_TO_FEATURE_MAPPING = {
     '1': 'watermark',
@@ -224,6 +239,7 @@ NUMBER_TO_FEATURE_MAPPING = {
     '11': 'uv_thread',
     '12': 'symbol_of_nature',
     '13': 'optically_variable_thread',
+    '14': 'shadow_thread',
 }
 
 FEATURE_TO_NUMBER_MAPPING = {v: k for k, v in NUMBER_TO_FEATURE_MAPPING.items()}
@@ -458,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.12',
+            'logic_version': '17.13',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -819,6 +835,7 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
             'see_through_mark': False,
             'uv_thread': False,
             'symbol_of_nature': False,
+            'shadow_thread': False,
         }
 
         # High denomination only features (₱500 / ₱1000)
@@ -829,9 +846,16 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
             'enhanced_value_panel': False,
         }
         
-        # Counterfeit indicators
+        # Counterfeit indicators (FALSE markers from the securitycf model + EVP model)
         counterfeit_indicators = {
-            'false_enhanced_value_panel': False
+            'false_enhanced_value_panel': False,
+            'false_watermark': False,
+            'false_see_through_mark': False,
+            'false_shadow_thread': False,
+            'false_security_thread': False,
+            'false_concealed_value': False,
+            'false_ovi': False,
+            'false_bill': False,
         }
         
         # Run ALL models in parallel
@@ -913,6 +937,24 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
                 basic_features['symbol_of_nature'] = True
             elif label == 'optically-variable-thread':
                 high_denom_features['optically_variable_thread'] = True
+
+        # Merged security/counterfeit model: better watermark/see-through/shadow detection
+        # AND the FALSE markers that drive a real counterfeit verdict.
+        scf_model = model_loader.get_model('securitycf')
+        if scf_model is not None:
+            for det in simple_detection(scf_model, image, SECURITYCF_CLASSES, 0.30):
+                lbl = det.get('label', ''); conf = det.get('confidence', 0)
+                if lbl.startswith('false_'):
+                    if lbl in counterfeit_indicators:
+                        counterfeit_indicators[lbl] = True
+                    print(f"  🚩 securitycf FALSE marker: {lbl} ({conf:.2f})")
+                elif lbl == 'enhanced_value_panel':
+                    high_denom_features['enhanced_value_panel'] = True
+                elif lbl == 'ovi':
+                    high_denom_features['optically_variable_ink'] = True
+                elif lbl in basic_features:
+                    basic_features[lbl] = True
+                    print(f"  ✅ securitycf feature: {lbl} ({conf:.2f})")
 
         # Process high denomination features if applicable
         if is_high_denom:
@@ -1010,7 +1052,8 @@ async def process_frame_parallel(frame: np.ndarray) -> Dict[str, Any]:
         
         # Full set of security features the models look for (drives the checklist).
         required_keys = ['value', 'serial_number', 'security_thread', 'concealed_value',
-                         'watermark', 'value_watermark', 'see_through_mark', 'uv_thread', 'symbol_of_nature']
+                         'watermark', 'value_watermark', 'see_through_mark', 'uv_thread',
+                         'symbol_of_nature', 'shadow_thread']
         if is_high_denom:
             required_keys.extend(['optically_variable_ink', 'optically_variable_thread', 'ovd', 'enhanced_value_panel'])
         
@@ -1252,10 +1295,14 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any],
         # lighting/tilt-dependent features across angles.
         lighting_dependent = ['watermark', 'see_through_mark', 'optically_variable_ink', 'ovd']
 
-        if counterfeit_indicators.get('false_enhanced_value_panel', False):
-            # A FALSE enhanced value panel is a genuine forgery marker.
+        # Any positive FALSE marker (from the securitycf counterfeit model: false watermark,
+        # false security thread, false see-through, false OVI/EVP, false bill, etc.) is a
+        # strong forgery signal. This is the real counterfeit detection.
+        false_markers = [k for k, v in (counterfeit_indicators or {}).items() if v]
+        if false_markers:
             is_genuine = False
-            reasons.append("Detected a FALSE enhanced value panel — strong counterfeit indicator.")
+            pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
+            reasons.append(f"Detected counterfeit marker(s): {pretty} — strong counterfeit indicator.")
         elif (not is_high_denom) and security_features.get('enhanced_value_panel', False):
             is_genuine = False
             reasons.append("Enhanced value panel present on a low-denomination note (should not be there).")
@@ -2343,7 +2390,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.12",
+            "logic_version": "17.13",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2433,7 +2480,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.12",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.13",
     }
     try:
         from billy_rag import billy_rag
@@ -2764,7 +2811,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.12",
+                "logic_version": "17.13",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2809,7 +2856,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.12",
+        "api_version": "17.13",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
