@@ -87,15 +87,16 @@ public class ChatBotActivity extends AppCompatActivity {
         setupSendButton();
         setupSuggestionChips();
 
-        if (userId != null && !userId.isEmpty()) {
-            getChatHistory();
-        } else {
-            Log.e(TAG, "User ID is null or empty, cannot fetch chat history. Welcome message is shown.");
-            // No other messages to load, welcome message is already there.
-            // If adapter was null during addWelcomeMessageAsFirst, re-notify (edge case)
-            if (chatAdapter != null && chatAdapter.getItemCount() == 0 && !chatMessages.isEmpty()) {
-                chatAdapter.notifyItemInserted(0);
-            }
+        // Chat-history persistence is intentionally NOT attached here.
+        // The app uses a custom login (not Firebase Auth), so RTDB writes to "Billy Chats"
+        // are denied by the rule ".write": "auth != null". A ValueEventListener on that path
+        // made Firebase do an optimistic local write then REVERT on the server rejection,
+        // which rebuilt the list as just the welcome message — wiping the user's question and
+        // Billy's answer (the "answer appears then is replaced by the intro" bug).
+        // Chat now lives in-memory for the session; the welcome message is shown by
+        // addWelcomeMessageAsFirst() above, and Clear-chat routes through the SA proxy.
+        if (chatAdapter != null && chatAdapter.getItemCount() == 0 && !chatMessages.isEmpty()) {
+            chatAdapter.notifyItemInserted(0);
         }
     }
 
