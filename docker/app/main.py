@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.14")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.15")
 
 # CORS
 app.add_middleware(
@@ -474,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.14',
+            'logic_version': '17.15',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -1304,8 +1304,19 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any],
         # Any positive FALSE marker (from the securitycf counterfeit model: false watermark,
         # false security thread, false see-through, false OVI/EVP, false bill, etc.) is a
         # strong forgery signal. This is the real counterfeit detection.
-        # Exclude 'false_bill' (noisy whole-note guess) — only specific feature forgeries condemn.
-        false_markers = [k for k, v in (counterfeit_indicators or {}).items() if v and k != 'false_bill']
+        # A false_X marker only condemns if the GENUINE X is NOT also detected — if both fire,
+        # it's a model error on a genuine note, not a forgery. 'false_bill' never condemns
+        # (noisy whole-note guess). Keeps real counterfeit detection without flagging genuine
+        # bills on a single spurious false detection.
+        GENUINE_OF = {
+            'false_watermark': 'watermark', 'false_see_through_mark': 'see_through_mark',
+            'false_shadow_thread': 'shadow_thread', 'false_security_thread': 'security_thread',
+            'false_concealed_value': 'concealed_value', 'false_ovi': 'optically_variable_ink',
+            'false_enhanced_value_panel': 'enhanced_value_panel',
+        }
+        false_markers = [k for k, v in (counterfeit_indicators or {}).items()
+                         if v and k != 'false_bill'
+                         and not security_features.get(GENUINE_OF.get(k, ''), False)]
         if false_markers:
             is_genuine = False
             pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
@@ -2397,7 +2408,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.14",
+            "logic_version": "17.15",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2487,7 +2498,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.14",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.15",
     }
     try:
         from billy_rag import billy_rag
@@ -2818,7 +2829,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.14",
+                "logic_version": "17.15",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2863,7 +2874,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.14",
+        "api_version": "17.15",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
