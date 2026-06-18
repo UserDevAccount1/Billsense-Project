@@ -159,14 +159,18 @@ class FirebaseClient:
             
             print(f"📁 Storage path: {storage_path}")
             
-            # Upload to Firebase Storage
+            # Upload with a Firebase download token. This works with uniform bucket-level
+            # access (the default), unlike blob.make_public() which needs per-object ACLs
+            # and throws on such buckets -> previously caused "image_storage_error".
+            import uuid as _uuid
+            from urllib.parse import quote as _quote
+            token = str(_uuid.uuid4())
             blob = self.bucket.blob(storage_path)
+            blob.metadata = {'firebaseStorageDownloadTokens': token}
             blob.upload_from_string(image_bytes, content_type='image/jpeg')
-            
-            # Make the file publicly accessible
-            blob.make_public()
-            
-            image_url = blob.public_url
+
+            image_url = ("https://firebasestorage.googleapis.com/v0/b/"
+                         f"{self.bucket.name}/o/{_quote(storage_path, safe='')}?alt=media&token={token}")
             print(f"✅ Image stored successfully: {image_url}")
             return image_url
             
