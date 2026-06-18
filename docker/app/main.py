@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.16")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.17")
 
 # CORS
 app.add_middleware(
@@ -474,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.16',
+            'logic_version': '17.17',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -947,9 +947,12 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
                 if lbl.startswith('false_'):
                     # 'false_bill' is the whole-note real/fake guess — it is too noisy and
                     # false-fires on genuine notes, so it must NOT condemn on its own. Only a
-                    # SPECIFIC feature-forgery marker at HIGH confidence (>=0.6) counts as a
-                    # counterfeit signal; this avoids flagging genuine bills as fake.
-                    if lbl != 'false_bill' and conf >= 0.60 and lbl in counterfeit_indicators:
+                    # SPECIFIC feature-forgery marker at HIGH confidence (>=0.75) counts as a
+                    # candidate counterfeit signal. securitycf false-fires the lighting-dependent
+                    # markers on genuine notes, so the high bar here + the corroboration rule in
+                    # evaluate_counterfeit (needs >=2 markers AND weak genuine evidence) together
+                    # stop genuine bills being flagged fake.
+                    if lbl != 'false_bill' and conf >= 0.75 and lbl in counterfeit_indicators:
                         counterfeit_indicators[lbl] = True
                         print(f"  🚩 securitycf FALSE marker: {lbl} ({conf:.2f})")
                     elif conf >= 0.30:
@@ -974,9 +977,15 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
             
             for det in evp_dets:
                 label = det.get('label', '')
+                evp_conf = det.get('confidence', 0)
                 if 'false' in label.lower():
-                    counterfeit_indicators['false_enhanced_value_panel'] = True
-                    print(f"  ⚠️ FALSE EVP detected: {det.get('confidence', 0):.3f}")
+                    # Gate the false-EVP marker at high confidence — a weak EVP false detection
+                    # false-fires on genuine high-denom notes (observed) and must not condemn.
+                    if evp_conf >= 0.75:
+                        counterfeit_indicators['false_enhanced_value_panel'] = True
+                        print(f"  ⚠️ FALSE EVP detected: {evp_conf:.3f}")
+                    else:
+                        print(f"  ℹ️ low-conf false EVP ignored: {evp_conf:.3f}")
                 else:
                     high_denom_features['enhanced_value_panel'] = True
                     print(f"  ✅ Genuine EVP detected: {det.get('confidence', 0):.3f}")
@@ -1317,10 +1326,31 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any],
         false_markers = [k for k, v in (counterfeit_indicators or {}).items()
                          if v and k != 'false_bill'
                          and not security_features.get(GENUINE_OF.get(k, ''), False)]
-        if false_markers:
+        # CORROBORATION RULE (v17.17): the securitycf/EVP false_* markers are noisy and
+        # false-fire on genuine notes — especially the lighting-dependent ones (watermark,
+        # see-through, EVP) that a single front-lit photo cannot independently verify. So a
+        # single marker NEVER condemns, and any number of markers is overridden when the note
+        # independently shows real, hard-to-fake security features. We only call COUNTERFEIT
+        # when the forgery signal is corroborated AND the genuine evidence is weak:
+        #   (a) >=2 DISTINCT condemning markers, AND
+        #   (b) fewer than 2 hard security features actually detected.
+        # This matches the principle that we never assume counterfeit from one unverifiable
+        # feature; a real fake shows multiple forgery markers and lacks genuine security features.
+        HARD_FEATURES = {'watermark', 'see_through_mark', 'security_thread', 'concealed_value',
+                         'shadow_thread', 'uv_thread', 'optically_variable_ink', 'ovd',
+                         'enhanced_value_panel'}
+        hard_genuine = sum(1 for f in HARD_FEATURES if security_features.get(f, False))
+        corroborated_forgery = len(false_markers) >= 2 and hard_genuine < 2
+        if corroborated_forgery:
             is_genuine = False
             pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
-            reasons.append(f"Detected counterfeit marker(s): {pretty} — strong counterfeit indicator.")
+            reasons.append(f"Multiple counterfeit markers ({pretty}) with no genuine security features verified — strong counterfeit indicator.")
+        elif false_markers:
+            # Markers fired but not corroborated (single marker, or the note shows real
+            # security features) → do NOT condemn; just note it lowers confidence.
+            is_genuine = True
+            pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
+            reasons.append(f"Possible marker(s) ({pretty}) flagged but not corroborated — {hard_genuine} genuine security feature(s) verified, consistent with a genuine note. Use Multi-Scan to confirm.")
         elif (not is_high_denom) and security_features.get('enhanced_value_panel', False):
             is_genuine = False
             reasons.append("Enhanced value panel present on a low-denomination note (should not be there).")
@@ -2459,7 +2489,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.16",
+            "logic_version": "17.17",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2549,7 +2579,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.16",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.17",
     }
     try:
         from billy_rag import billy_rag
@@ -2880,7 +2910,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.16",
+                "logic_version": "17.17",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2925,7 +2955,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.16",
+        "api_version": "17.17",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
