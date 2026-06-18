@@ -1,5 +1,6 @@
 # generated training artifacts — never commit
 merged_denom/
+merged_ship/
 merged_denom_smoke/
 runs/
 *.pt
