@@ -112,9 +112,16 @@ public class DialogUtils {
             dialog.getWindow().setAttributes(layoutParams);
         }
 
-        if (detections != null){
-            binding.videoDetectionContent.setText(detections.getContent());
+        String vContent = (detections != null) ? detections.getContent() : null;
+        if (vContent == null || vContent.trim().isEmpty()) {
+            vContent = "🎥 Video Scan — Continuous Verification\n\n" +
+                    "• Records a short video while you move across the bill\n" +
+                    "• Captures security features across motion and angles\n" +
+                    "• Picks the best frames and gives an authenticity verdict\n\n" +
+                    "Move your phone slowly and steadily over the bill in good, even lighting.\n\n" +
+                    "Tap “Begin Detection” to start.";
         }
+        binding.videoDetectionContent.setText(vContent);
 
         binding.beginDetectionBtn.setOnClickListener(view -> {
             activity.startActivity(new Intent(activity, VideoScanActivity.class));
@@ -147,9 +154,16 @@ public class DialogUtils {
             dialog.getWindow().setAttributes(layoutParams);
         }
 
-        if (detections != null){
-            binding.multipleDetectionContent.setText(detections.getContent());
+        String mContent = (detections != null) ? detections.getContent() : null;
+        if (mContent == null || mContent.trim().isEmpty()) {
+            mContent = "📸 Multi-Scan — Multi-Angle Verification\n\n" +
+                    "• Captures the bill from several angles to verify tilt-dependent features\n" +
+                    "• Confirms color-shifting ink (OVI) and the optically variable device (OVD)\n" +
+                    "• Combines all angles into one authenticity verdict\n\n" +
+                    "Take 3–5 photos at different tilt angles in good, even lighting.\n\n" +
+                    "Tap “Begin Detection” to start.";
         }
+        binding.multipleDetectionContent.setText(mContent);
 
         binding.beginScanBtn.setOnClickListener(view -> {
             activity.startActivity(new Intent(activity, MultiScanActivity.class));
