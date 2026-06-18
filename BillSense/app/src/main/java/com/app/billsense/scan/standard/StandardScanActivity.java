@@ -91,10 +91,11 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // Full security-feature checklist (server feature keys). Every note has the 6 base
     // features; ₱500/₱1000 add 3 more. We tag each as detected (✓) or not-yet (○).
     private static final String[] BASE_FEATURES = {
-            "value", "serial_number", "security_thread", "concealed_value", "watermark", "see_through_mark"
+            "value", "serial_number", "security_thread", "concealed_value", "watermark",
+            "value_watermark", "see_through_mark", "uv_thread", "symbol_of_nature"
     };
     private static final String[] HIGH_DENOM_EXTRA = {
-            "optically_variable_ink", "ovd", "enhanced_value_panel"
+            "optically_variable_ink", "optically_variable_thread", "ovd", "enhanced_value_panel"
     };
 
     // --- Cold-start handling: warm the server + auto-retry the WebSocket ---
@@ -497,6 +498,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         switch (key) {
             case "see_through_mark": return "See-through Mark";
             case "optically_variable_ink": return "Optically Variable Ink (OVI)";
+            case "optically_variable_thread": return "Optically Variable Thread";
             case "ovd": return "Optically Variable Device (OVD)";
             case "enhanced_value_panel": return "Enhanced Value Panel";
             case "concealed_value": return "Concealed Value";
@@ -504,6 +506,9 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             case "serial_number": return "Serial Number";
             case "value": return "Value Numeral";
             case "watermark": return "Watermark";
+            case "value_watermark": return "Value Watermark";
+            case "uv_thread": return "UV Thread";
+            case "symbol_of_nature": return "Symbol of Nature";
             default: return key.replace("_", " ");
         }
     }

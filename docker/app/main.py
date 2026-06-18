@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.11")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.12")
 
 # CORS
 app.add_middleware(
@@ -212,14 +212,18 @@ COUNTERFEIT_MODEL_CLASSES = ['UV-thread', 'concealed-value', 'security-thread', 
 
 NUMBER_TO_FEATURE_MAPPING = {
     '1': 'watermark',
-    '2': 'value', 
+    '2': 'value',
     '3': 'serial_number',
     '4': 'security_thread',
     '5': 'concealed_value',
     '6': 'see_through_mark',
     '7': 'optically_variable_ink',
     '8': 'ovd',
-    '9': 'enhanced_value_panel'
+    '9': 'enhanced_value_panel',
+    '10': 'value_watermark',
+    '11': 'uv_thread',
+    '12': 'symbol_of_nature',
+    '13': 'optically_variable_thread',
 }
 
 FEATURE_TO_NUMBER_MAPPING = {v: k for k, v in NUMBER_TO_FEATURE_MAPPING.items()}
@@ -294,8 +298,10 @@ def create_numbered_annotated_image(image: np.ndarray, security_detections: List
             feature_name = None
             
             # Security model mappings
-            if label == 'watermark' or label == 'value watermark':
+            if label == 'watermark':
                 feature_name = 'watermark'
+            elif label == 'value watermark':
+                feature_name = 'value_watermark'
             elif label == 'value':
                 feature_name = 'value'
             elif label == 'serial number':
@@ -306,22 +312,22 @@ def create_numbered_annotated_image(image: np.ndarray, security_detections: List
                 feature_name = 'concealed_value'
             elif label == 'see through mark':
                 feature_name = 'see_through_mark'
-            
+
             # OVI model
             elif label == 'optically variable ink':
                 feature_name = 'optically_variable_ink'
-            
+
             # OVD model
             elif label == 'ovd':
                 feature_name = 'ovd'
-            
+
             # EVP model
             elif 'enhanced value panel' in label.lower():
                 if 'false' in label.lower():
                     feature_name = 'false_enhanced_value_panel'
                 else:
                     feature_name = 'enhanced_value_panel'
-            
+
             # Counterfeit model mappings
             elif label == 'concealed-value':
                 feature_name = 'concealed_value'
@@ -329,6 +335,12 @@ def create_numbered_annotated_image(image: np.ndarray, security_detections: List
                 feature_name = 'security_thread'
             elif label == 'serial-number':
                 feature_name = 'serial_number'
+            elif label == 'UV-thread':
+                feature_name = 'uv_thread'
+            elif label == 'symbol-of-nature':
+                feature_name = 'symbol_of_nature'
+            elif label == 'optically-variable-thread':
+                feature_name = 'optically_variable_thread'
             
             if feature_name and feature_name in FEATURE_TO_NUMBER_MAPPING:
                 number = FEATURE_TO_NUMBER_MAPPING[feature_name]
@@ -343,9 +355,10 @@ def create_numbered_annotated_image(image: np.ndarray, security_detections: List
         # Human-readable tags for each detected security feature, drawn ON the bill.
         DISPLAY_LABELS = {
             'value': 'Value', 'serial_number': 'Serial No.', 'security_thread': 'Security Thread',
-            'concealed_value': 'Concealed Value', 'watermark': 'Watermark', 'see_through_mark': 'See-through',
-            'optically_variable_ink': 'OVI', 'ovd': 'OVD', 'enhanced_value_panel': 'Value Panel',
-            'false_enhanced_value_panel': 'FALSE PANEL',
+            'concealed_value': 'Concealed Value', 'watermark': 'Watermark', 'value_watermark': 'Value Watermark',
+            'see_through_mark': 'See-through', 'uv_thread': 'UV Thread', 'symbol_of_nature': 'Symbol of Nature',
+            'optically_variable_ink': 'OVI', 'optically_variable_thread': 'OV Thread',
+            'ovd': 'OVD', 'enhanced_value_panel': 'Value Panel', 'false_enhanced_value_panel': 'FALSE PANEL',
         }
         # Adaptive sizing so tags stay readable across image resolutions.
         h, w = annotated_img.shape[:2]
@@ -445,7 +458,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.11',
+            'logic_version': '17.12',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -795,21 +808,25 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
         
         print(f"🔍 PARALLEL DETECTION: Denomination: {denomination}, Is High: {is_high_denom}")
         
-        # Initialize ALL features with False
+        # Initialize ALL security features the models can detect (shown in the checklist).
         basic_features = {
-            'concealed_value': False,
-            'security_thread': False,
-            'serial_number': False,
             'value': False,
+            'serial_number': False,
+            'security_thread': False,
+            'concealed_value': False,
             'watermark': False,
-            'see_through_mark': False
+            'value_watermark': False,
+            'see_through_mark': False,
+            'uv_thread': False,
+            'symbol_of_nature': False,
         }
-        
-        # High denomination only features
+
+        # High denomination only features (₱500 / ₱1000)
         high_denom_features = {
             'optically_variable_ink': False,
+            'optically_variable_thread': False,
             'ovd': False,
-            'enhanced_value_panel': False
+            'enhanced_value_panel': False,
         }
         
         # Counterfeit indicators
@@ -864,6 +881,10 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
                 print(f"  💧 WATERMARK DETECTED with confidence: {confidence}")
             elif label == 'see through mark':
                 basic_features['see_through_mark'] = True
+            elif label == 'value watermark':
+                basic_features['value_watermark'] = True
+            elif label == 'optically variable ink':
+                high_denom_features['optically_variable_ink'] = True
 
         # Process specialized watermark detection
         if watermark_result['detected']:
@@ -886,6 +907,12 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
                 basic_features['serial_number'] = True
             elif label == 'value':
                 basic_features['value'] = True
+            elif label == 'UV-thread':
+                basic_features['uv_thread'] = True
+            elif label == 'symbol-of-nature':
+                basic_features['symbol_of_nature'] = True
+            elif label == 'optically-variable-thread':
+                high_denom_features['optically_variable_thread'] = True
 
         # Process high denomination features if applicable
         if is_high_denom:
@@ -908,26 +935,14 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
         else:
             print("  🔒 Skipping high denomination feature detection for low denomination note")
 
-        # Combine results based on denomination type
+        # Combine results based on denomination type. total_expected is the FULL set of
+        # security features the models look for (9 base; +4 for high-denomination notes).
         if is_high_denom:
             all_features = {**basic_features, **high_denom_features}
-            total_expected_features = 9
         else:
-            all_features = basic_features
-            total_expected_features = 6
-        
-        # Ensure all keys exist
-        required_features = [
-            'concealed_value', 'security_thread', 'serial_number', 
-            'value', 'watermark', 'see_through_mark'
-        ]
-        if is_high_denom:
-            required_features.extend(['optically_variable_ink', 'ovd', 'enhanced_value_panel'])
-        
-        for feature in required_features:
-            if feature not in all_features:
-                all_features[feature] = False
-        
+            all_features = dict(basic_features)
+        total_expected_features = len(all_features)
+
         detected_features_count = sum(all_features.values())
         coverage_percentage = (detected_features_count / total_expected_features) * 100 if total_expected_features > 0 else 0
         
@@ -993,10 +1008,11 @@ async def process_frame_parallel(frame: np.ndarray) -> Dict[str, Any]:
         counterfeit_indicators = features_result.get("counterfeit_indicators", {})
         is_high_denom = features_result.get("is_high_denomination", False)
         
-        # Ensure all required keys exist in security_features
-        required_keys = ['concealed_value', 'security_thread', 'serial_number', 'value', 'watermark', 'see_through_mark']
+        # Full set of security features the models look for (drives the checklist).
+        required_keys = ['value', 'serial_number', 'security_thread', 'concealed_value',
+                         'watermark', 'value_watermark', 'see_through_mark', 'uv_thread', 'symbol_of_nature']
         if is_high_denom:
-            required_keys.extend(['optically_variable_ink', 'ovd', 'enhanced_value_panel'])
+            required_keys.extend(['optically_variable_ink', 'optically_variable_thread', 'ovd', 'enhanced_value_panel'])
         
         for key in required_keys:
             if key not in security_features:
@@ -2327,7 +2343,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.11",
+            "logic_version": "17.12",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2417,7 +2433,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.11",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.12",
     }
     try:
         from billy_rag import billy_rag
@@ -2748,7 +2764,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.11",
+                "logic_version": "17.12",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2793,7 +2809,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.11",
+        "api_version": "17.12",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
