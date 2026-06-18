@@ -23,6 +23,7 @@ import os
 import sys
 import glob
 import shutil
+import hashlib
 
 # ---------------------------------------------------------------- config
 ROBOFLOW_API_KEY = os.environ.get('ROBOFLOW_API_KEY', '').strip()
@@ -45,10 +46,14 @@ _LOCAL_ROOT = os.environ.get(
     'LOCAL_DATASETS_ROOT',
     'D:/Github/Billsense-Project/Resources/Datasets')
 LOCAL_DATASETS = [
-    (_LOCAL_ROOT + '/PH Banknote.v1-annotated-bounding-box-version.yolov8',
-     'phbanknote_v1', 'denom'),   # YOLOv8 format, 1391 imgs
+    (_LOCAL_ROOT + '/PH Banknote.coco',
+     'phbanknote_coco', 'denom'),   # COCO, full-res. Superset of the old v1 yolov8 export
+                                    # (100% of v1's images, full resolution) -> v1 retired.
+    (_LOCAL_ROOT + '/Peso bill Detector.coco-segmentation',
+     'peso_detector', 'denom'),     # COCO-seg (bbox used as HBB); 2025 captures, new/old
+                                    # design variety -> targets the 50/200 recall gap.
     (_LOCAL_ROOT + '/Philippine Peso Bill Identifier.coco',
-     'peso_identifier', 'denom'),  # COCO format; polymer classes folded into plain value
+     'peso_identifier', 'denom'),   # COCO; polymer classes folded into plain value.
 ]
 
 DENOM_CLASSES = ['20', '50', '100', '200', '500', '1000']
@@ -215,9 +220,18 @@ def build_dataset(out_dir, members, canon, classes):
         os.makedirs('%s/%s/labels' % (out_dir, sp), exist_ok=True)
     report = {}
     kept = 0
+    # Deterministic ~80/20 split by image stem, IGNORING source splits. Source splits
+    # here are unreliable -- e.g. PH Banknote.coco ships test(650) > train(599), which when
+    # folded test->valid starves 20-peso *training*. All stems are unique across datasets
+    # (verified: zero cross-dataset overlap, no augmentation duplicates), so a stem-hash
+    # split is leakage-safe and gives balanced per-class train coverage. Override the valid
+    # fraction with env VAL_EVERY (default 5 -> 20% valid).
+    val_every = int(os.environ.get('VAL_EVERY', '5'))
     for label, loc in members:
         for src_split, img_path, base, boxes in iter_samples(loc):
-            dst_split = 'valid' if src_split == 'test' else src_split
+            stem = os.path.splitext(base)[0]
+            h = int(hashlib.md5(('%s/%s' % (label, stem)).encode()).hexdigest(), 16)
+            dst_split = 'valid' if (h % val_every == 0) else 'train'
             new_lines = []
             for (src_name, xc, yc, w, h) in boxes:
                 c = canon(src_name)
