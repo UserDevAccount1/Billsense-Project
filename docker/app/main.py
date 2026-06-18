@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.0")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.5")
 
 # CORS
 app.add_middleware(
@@ -427,7 +427,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.0',
+            'logic_version': '17.5',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -984,12 +984,20 @@ async def process_frame_parallel(frame: np.ndarray) -> Dict[str, Any]:
             if key not in security_features:
                 security_features[key] = False
         
-        # Evaluate authenticity with safe defaults
-        authenticity = evaluate_counterfeit(denomination, features_result)
-        
-        # Calculate confidence score safely
+        # Measurement layer: banknote frame box, per-feature geometry, capture quality
+        bill_box = get_bill_frame_box(denom_detections)
+        geometry = measure_feature_geometry(denomination, features_result.get("detection_details", {}), bill_box)
+        try:
+            overall_quality = analyze_frame_quality(frame).get("overall_quality")
+        except Exception:
+            overall_quality = None
+
+        # Evaluate authenticity (geometry + quality aware)
+        authenticity = evaluate_counterfeit(denomination, features_result, geometry=geometry, overall_quality=overall_quality)
+
+        # Calibrated confidence score from the evaluator
         coverage = features_result.get("coverage_percentage", 0)
-        confidence_score = min(100, max(0, coverage))
+        confidence_score = authenticity.get("authenticity_score", min(100, max(0, coverage)))
         
         # Get detected features list safely
         detected_features = []
@@ -1009,6 +1017,8 @@ async def process_frame_parallel(frame: np.ndarray) -> Dict[str, Any]:
             "has_false_evp": counterfeit_indicators.get("false_enhanced_value_panel", False),
             "security_features": security_features,
             "counterfeit_indicators": counterfeit_indicators,
+            "feature_geometry": geometry,
+            "authenticity_score": confidence_score,
             "processing_mode": "parallel",
             "status": "success"
         }
@@ -1046,8 +1056,136 @@ async def process_frame_parallel(frame: np.ndarray) -> Dict[str, Any]:
             "error": str(e)
         }
 
-def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any]) -> Dict[str, Any]:
-    """Evaluate if the note is counterfeit based on denomination and features"""
+import math as _math
+
+# --- Reference geometry for the measurement layer (Component 1) ---
+REFERENCE_GEOMETRY = {}
+try:
+    _ref_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_geometry.json")
+    if os.path.exists(_ref_path):
+        with open(_ref_path) as _rf:
+            REFERENCE_GEOMETRY = (json.load(_rf) or {}).get("geometry", {})
+        print(f"✅ Loaded reference geometry for {len(REFERENCE_GEOMETRY)} denominations")
+    else:
+        print("⚠️ reference_geometry.json not found — geometry position scoring will be neutral")
+except Exception as _e:
+    print(f"⚠️ Failed to load reference_geometry.json: {_e}")
+
+# model class name -> canonical feature key (mirrors the security-feature mapping)
+_GEOM_CLASS_MAP = {
+    "concealed value": "concealed_value", "security thread": "security_thread",
+    "serial number": "serial_number", "value": "value", "value watermark": "watermark",
+    "watermark": "watermark", "see through mark": "see_through_mark",
+    "optically variable ink": "optically_variable_ink", "ovd": "ovd",
+    "1k enhanced value panel": "enhanced_value_panel", "500 enhanced value panel": "enhanced_value_panel",
+}
+
+def _norm_label(s):
+    return str(s).lower().replace("-", " ").replace("_", " ").strip()
+
+def get_bill_frame_box(denom_detections):
+    """Banknote frame = highest-confidence denomination detection bbox (else None)."""
+    valid = [d for d in (denom_detections or []) if d.get("bbox")]
+    if not valid:
+        return None
+    return max(valid, key=lambda d: d.get("confidence", 0)).get("bbox")
+
+def measure_feature_geometry(denomination, detection_details, bill_box):
+    """Per-feature geometry vs the genuine reference. Returns
+    {feature: {detected, confidence, position_score, bbox_norm}}. position_score is None when
+    no reference exists for that feature (neutral)."""
+    out = {}
+    if not bill_box:
+        return out
+    try:
+        fx1, fy1, fx2, fy2 = bill_box
+    except Exception:
+        return out
+    fw, fh = max(fx2 - fx1, 1e-6), max(fy2 - fy1, 1e-6)
+    ref = REFERENCE_GEOMETRY.get(str(denomination), {})
+    dd = detection_details or {}
+    dets = []
+    for key in ("security_detections", "ovi_detections", "ovd_detections", "evp_detections"):
+        dets.extend(dd.get(key, []) or [])
+    for det in dets:
+        try:
+            feat = _GEOM_CLASS_MAP.get(_norm_label(det.get("label", "")))
+            bbox = det.get("bbox")
+            if not feat or not bbox:
+                continue
+            x1, y1, x2, y2 = bbox
+            cx = max(0.0, min(1.0, ((x1 + x2) / 2 - fx1) / fw))
+            cy = max(0.0, min(1.0, ((y1 + y2) / 2 - fy1) / fh))
+            w = max(0.0, min(1.0, (x2 - x1) / fw))
+            h = max(0.0, min(1.0, (y2 - y1) / fh))
+            conf = float(det.get("confidence", 0))
+            r = ref.get(feat)
+            if r:
+                sp = max(r.get("sigma_pos", 0.1), 1e-3)
+                ss = max(r.get("sigma_size", 0.1), 1e-3)
+                dcen = _math.hypot(cx - r.get("cx", cx), cy - r.get("cy", cy))
+                dsz = _math.hypot(w - r.get("w", w), h - r.get("h", h))
+                pscore = round(_math.exp(-((dcen / sp) ** 2 + (dsz / ss) ** 2)), 3)
+            else:
+                pscore = None
+            prev = out.get(feat)
+            if prev is None or conf > prev.get("confidence", 0):
+                out[feat] = {"detected": True, "confidence": round(conf, 3),
+                             "position_score": pscore,
+                             "bbox_norm": [round(cx, 3), round(cy, 3), round(w, 3), round(h, 3)]}
+        except Exception:
+            continue
+    return out
+
+def _region_hue(img, box):
+    """Median hue (OpenCV 0-179) of saturated pixels in a bbox region, or None."""
+    try:
+        x1, y1, x2, y2 = [int(v) for v in box]
+        x1, y1 = max(0, x1), max(0, y1)
+        crop = img[y1:y2, x1:x2]
+        if crop.size == 0:
+            return None
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+        mask = (s > 40) & (v > 40) & (v < 250)   # ignore highlights / dark / unsaturated
+        vals = h[mask] if int(mask.sum()) >= 20 else h.reshape(-1)
+        return float(np.median(vals))
+    except Exception:
+        return None
+
+def measure_color_shift(angle_frames):
+    """Component 3: sample the OVI/OVD region hue across angle frames and report the colour
+    shift. Genuine optically-variable ink/devices change colour with viewing angle; a flat
+    print or reflection does not shift consistently."""
+    try:
+        hues = []
+        ovi_model = model_loader.get_model('ovi')
+        ovd_model = model_loader.get_model('ovd')
+        for frame in angle_frames:
+            dets = (simple_detection(ovi_model, frame, OVI_CLASSES, min_confidence=0.2)
+                    + simple_detection(ovd_model, frame, OVD_CLASSES, min_confidence=0.2))
+            dets = [d for d in dets if d.get('bbox')]
+            if not dets:
+                continue
+            best = max(dets, key=lambda d: d.get('confidence', 0))
+            hue = _region_hue(frame, best['bbox'])
+            if hue is not None:
+                hues.append(round(hue, 1))
+        if len(hues) < 2:
+            return {"delta": 0.0, "shift_detected": False, "hues": hues,
+                    "note": "OVI/OVD must be visible in >=2 angles to measure colour shift"}
+        def hue_dist(a, b):
+            d = abs(a - b)
+            return min(d, 180 - d)
+        delta = max(hue_dist(a, b) for a in hues for b in hues)
+        return {"delta": round(delta, 1), "shift_detected": delta >= 15.0, "hues": hues}
+    except Exception as e:
+        return {"delta": 0.0, "shift_detected": False, "error": str(e)}
+
+def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any],
+                         geometry: Dict[str, Any] = None, overall_quality: float = None) -> Dict[str, Any]:
+    """Evaluate authenticity from features + geometry + capture quality. Produces a calibrated
+    0-100 authenticity_score. COUNTERFEIT only on a real forgery marker (false EVP)."""
     try:
         reasons = []
         is_genuine = True
@@ -1059,6 +1197,17 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any]) -> 
         coverage = features_result.get("coverage_percentage", 0) or 0
         detected = features_result.get("detected_features_count", 0)
         total = features_result.get("total_expected_features", 9 if is_high_denom else 6)
+
+        # Can't even identify the note → don't pass judgment; ask for a clearer rescan.
+        if not denomination or denomination == "UNKNOWN":
+            return {
+                "is_genuine": False, "status": "UNKNOWN", "confidence": "LOW",
+                "reasons": ["Could not identify the denomination in this photo. Re-scan the full note in good lighting."],
+                "coverage_percentage": coverage, "detected_features_count": detected,
+                "total_expected_features": total,
+                "denomination_type": "HIGH_DENOMINATION" if is_high_denom else "LOW_DENOMINATION",
+                "has_false_evp": counterfeit_indicators.get('false_enhanced_value_panel', False),
+            }
 
         # RELAXED RULE (v17.1): a single front-lit camera photo CANNOT capture the
         # watermark / see-through register (need transmitted light) or OVI / OVD
@@ -1083,27 +1232,62 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any]) -> 
             if missing_light:
                 reasons.append("Watermark / see-through / OVI need backlight or tilt — use Multi-Scan to confirm them.")
         else:
-            is_genuine = False
-            reasons.append(f"Only {detected}/{total} features detected ({coverage:.0f}%). Re-scan with better lighting/angle, or use Multi-Scan for a confident result.")
+            # No positive forgery marker found. A single front-lit photo can't capture
+            # the lighting/tilt-dependent features, so low coverage must NOT condemn a
+            # genuine note — it only lowers confidence. COUNTERFEIT is reserved for an
+            # actual forgery signal (false EVP) handled above.
+            is_genuine = True
+            reasons.append(f"No counterfeit indicators found. Only {detected}/{total} security features were visible in this photo ({coverage:.0f}%) — watermark / see-through / OVI need backlight or tilt. Use Multi-Scan for full security verification.")
 
-        # Determine confidence level
-        if coverage >= 80:
-            confidence = "HIGH"
-        elif coverage >= GENUINE_COVERAGE_THRESHOLD:
-            confidence = "MEDIUM"
+        # --- Calibrated authenticity score (Component 2) + quality gate (Component 4) ---
+        forgery = not is_genuine  # only the forgery branches above set is_genuine False
+        det_confs = [g.get("confidence", 0) for g in (geometry or {}).values()]
+        pos_scores = [g["position_score"] for g in (geometry or {}).values() if g.get("position_score") is not None]
+        coverage_norm = min(1.0, (coverage or 0) / 100.0)
+        mean_conf = (sum(det_confs) / len(det_confs)) if det_confs else 0.0
+        mean_pos = (sum(pos_scores) / len(pos_scores)) if pos_scores else 0.0
+        # Reliable signals drive the score (coverage + detection confidence). Geometry
+        # placement is a BONUS only — banknote photos vary in crop/angle so position is
+        # noisy; it can lift the score for well-placed features but must never penalise a
+        # genuine note. Capture quality scales the result.
+        if det_confs:
+            base = 0.60 * coverage_norm + 0.40 * mean_conf
         else:
-            confidence = "LOW"
+            base = coverage_norm
+        base = min(1.0, base + 0.15 * mean_pos)
+        quality_factor = max(0.4, min(1.0, overall_quality / 70.0)) if overall_quality is not None else 1.0
+        score = int(round(100 * base * quality_factor))
+
+        quality_gated = False
+        if forgery:
+            status, confidence = "COUNTERFEIT", "HIGH"
+            score = min(score, 15)
+        elif overall_quality is not None and overall_quality < 30:
+            # NEEDS_RESCAN is reserved for genuine capture problems, never for a clean
+            # photo of an identified note with few visible features.
+            status, confidence, quality_gated, is_genuine = "NEEDS_RESCAN", "LOW", True, False
+            reasons.append("Image quality too low (blurry/dark/low-contrast) — re-scan in better lighting for a reliable result.")
+        elif score >= 75:
+            status, confidence = "GENUINE", "HIGH"
+        elif score >= 50:
+            status, confidence = "GENUINE", "MEDIUM"
+        else:
+            status, confidence = "LIKELY GENUINE", "LOW"
+            reasons.append("Identified as genuine, but only part of the security features are visible in a single photo — use Multi-Scan to fully verify the tilt/backlit features.")
 
         return {
             "is_genuine": is_genuine,
-            "status": "GENUINE" if is_genuine else "COUNTERFEIT",
+            "status": status,
             "confidence": confidence,
+            "authenticity_score": score,
             "reasons": reasons,
             "coverage_percentage": coverage,
             "detected_features_count": detected,
             "total_expected_features": total,
             "denomination_type": "HIGH_DENOMINATION" if is_high_denom else "LOW_DENOMINATION",
-            "has_false_evp": counterfeit_indicators.get('false_enhanced_value_panel', False)
+            "has_false_evp": counterfeit_indicators.get('false_enhanced_value_panel', False),
+            "quality_gated": quality_gated,
+            "feature_geometry": geometry or {},
         }
         
     except Exception as e:
@@ -2125,7 +2309,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.0",
+            "logic_version": "17.5",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2220,6 +2404,19 @@ async def multi_scan(files: List[UploadFile] = File(...), user_id: str = "anonym
         }
         
         final_authenticity = evaluate_counterfeit(final_denomination, features_result)
+
+        # Component 3: OVI/OVD colour-shift across the angle frames (strongest optical authenticator)
+        ovi_color_shift = measure_color_shift(angle_frames)
+        if ovi_color_shift.get("shift_detected") and not final_authenticity.get("has_false_evp"):
+            boosted = min(100, final_authenticity.get("authenticity_score", 0) + 25)
+            final_authenticity["authenticity_score"] = boosted
+            if final_authenticity.get("status") != "COUNTERFEIT":
+                final_authenticity["is_genuine"] = True
+                final_authenticity["status"] = "GENUINE" if boosted >= 50 else "LIKELY GENUINE"
+                final_authenticity["confidence"] = "HIGH" if boosted >= 75 else "MEDIUM"
+            final_authenticity.setdefault("reasons", []).append(
+                f"Optically variable ink/device shifts colour across angles (Δhue {ovi_color_shift['delta']}) — strong genuineness signal.")
+
         processing_time = round(time.time() - start_time, 2)
         
         # Create and store annotated images for each angle
@@ -2263,6 +2460,8 @@ async def multi_scan(files: List[UploadFile] = File(...), user_id: str = "anonym
             "features_detected": detected_features,
             "coverage_percentage": features_result["coverage_percentage"],
             "confidence": final_authenticity.get("confidence", "LOW"),
+            "authenticity_score": final_authenticity.get("authenticity_score", 0),
+            "ovi_color_shift": ovi_color_shift,
             "reasons": final_authenticity.get("reasons", []),
             "angle_results": angle_results,
             "processing_time": processing_time,
@@ -2373,7 +2572,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.0",
+                "logic_version": "17.5",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2418,7 +2617,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.0",
+        "api_version": "17.5",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [

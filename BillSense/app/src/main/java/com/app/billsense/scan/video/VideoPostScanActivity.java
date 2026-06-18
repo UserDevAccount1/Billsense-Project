@@ -119,12 +119,23 @@ public class VideoPostScanActivity extends AppCompatActivity {
         // Overall Result Card
         VideoScanResponse.Authenticity auth = response.getAuthenticity();
         if (auth != null) {
-            binding.authenticityResultText.setText(auth.getStatus());
-            binding.authenticityResultText.setTextColor(
-                    auth.isGenuine() ? Color.parseColor("#2E7D32") : Color.parseColor("#C62828")
-            );
-            binding.confidenceResultText.setText("Confidence: " + auth.getConfidence());
-            binding.reasonsText.setText("Reasons: " + String.join("\n", auth.getReasons()));
+            String vStatus = auth.getStatus() != null ? auth.getStatus() : "UNKNOWN";
+            String vsu = vStatus.toUpperCase(java.util.Locale.US);
+            int vColor = vsu.contains("COUNTERFEIT") ? Color.parseColor("#C62828")
+                    : (vsu.contains("GENUINE") && !vsu.contains("LIKELY")) ? Color.parseColor("#2E7D32")
+                    : Color.parseColor("#FF8F00");
+            binding.authenticityResultText.setText(vStatus);
+            binding.authenticityResultText.setTextColor(vColor);
+
+            int vScore = auth.getAuthenticityScore();
+            binding.confidenceResultText.setText(String.format("Authenticity Score: %d/100 (%s)", vScore, auth.getConfidence()));
+            binding.confidenceBar.setProgress(vScore);
+            int vBar = vScore >= 75 ? Color.parseColor("#2E7D32") : (vScore >= 25 ? Color.parseColor("#FF8F00") : Color.parseColor("#C62828"));
+            binding.confidenceBar.getProgressDrawable().setColorFilter(vBar, android.graphics.PorterDuff.Mode.SRC_IN);
+
+            if (auth.getReasons() != null) {
+                binding.reasonsText.setText("Reasons: " + String.join("\n", auth.getReasons()));
+            }
         }
 
         binding.denominationResultText.setText(response.getDenomination());

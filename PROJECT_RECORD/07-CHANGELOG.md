@@ -2,6 +2,27 @@
 
 > Append an entry for every meaningful change so the next agent inherits it.
 
+## Recent changes
+
+### 2026-06-18 — Real Measurement layer + retrained denomination model (v1.5.0 / API v17.5)
+- What changed: cloud ML API now emits a calibrated 0–100 `authenticity_score`
+  (coverage + detection confidence + capture quality); per-feature geometry placement vs
+  `reference_geometry.json`; quality gating (NEEDS_RESCAN for bad captures); OVI/OVD
+  colour-shift across Multi-Scan angles; status tiers GENUINE/LIKELY GENUINE/NEEDS_RESCAN/
+  COUNTERFEIT (forgery-only). Android app shows a colour-coded score bar on all three scan
+  screens + per-feature "% placed". Denomination model retrained on merged YOLOv8+COCO
+  PH-banknote data (mAP50 0.832).
+- Why: genuine notes (incl. polymer) were misread as counterfeit; move from binary
+  detection toward real measurement (per the "UI and Algorithm impacts" reference).
+- Verified how (local-first): API round-trips across all six denominations
+  (genuine → GENUINE/LIKELY GENUINE, zero false counterfeit); multi-scan returns
+  `ovi_color_shift` + score; reference geometry built on Colab GPU; design in
+  `docs/REAL_MEASUREMENT_DESIGN.md`.
+- Surfaces updated: Cloud Run ☑ (rev billsense-api-00018-fkj)  Android ☑ (v1.5.0, APK via Fire APK)  cPanel ☐  Docker ☐
+- Follow-ups / risks: geometry `position_score` is lenient/bonus-only (v1.1 = stable
+  bill-frame refinement); ₱20/₱50 denomination recall gap (needs more data); OVI
+  "shift_detected" needs real tilt captures of one note.
+
 ## Tech stack (current versions)
 
 | Layer | Stack |

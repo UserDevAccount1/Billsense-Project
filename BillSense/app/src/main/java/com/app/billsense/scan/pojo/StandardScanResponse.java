@@ -110,6 +110,16 @@ public class StandardScanResponse {
         @SerializedName("has_false_evp")
         public boolean hasFalseEvp;
 
+        // --- Real-measurement layer (v17.3) ---
+        @SerializedName("authenticity_score")
+        public int authenticityScore;          // calibrated 0-100
+
+        @SerializedName("quality_gated")
+        public boolean qualityGated;
+
+        @SerializedName("feature_geometry")
+        public java.util.Map<String, FeatureGeometry> featureGeometry;
+
         // Default constructor required by Firebase
         public Authenticity() {}
 
@@ -122,9 +132,29 @@ public class StandardScanResponse {
         public int getDetectedFeaturesCount() { return detectedFeaturesCount; }
         public int getTotalExpectedFeatures() { return totalExpectedFeatures; }
         public String getDenominationType() { return denominationType; }
+        public int getAuthenticityScore() { return authenticityScore; }
+        public boolean isQualityGated() { return qualityGated; }
+        public java.util.Map<String, FeatureGeometry> getFeatureGeometry() { return featureGeometry; }
 
         @PropertyName("has_false_evp")
         public boolean hasFalseEvp() { return hasFalseEvp; }
+    }
+
+    // --- Per-feature geometry measurement (v17.3) ---
+    public static class FeatureGeometry {
+        @SerializedName("detected")
+        public boolean detected;
+        @SerializedName("confidence")
+        public double confidence;
+        @SerializedName("position_score")
+        public Double positionScore;   // nullable: null when no reference exists
+        @SerializedName("bbox_norm")
+        public java.util.List<Double> bboxNorm;
+
+        public FeatureGeometry() {}
+        public boolean isDetected() { return detected; }
+        public double getConfidence() { return confidence; }
+        public Double getPositionScore() { return positionScore; }
     }
 
     // --- Inner class for the 'security_features' JSON object ---

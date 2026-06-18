@@ -20,6 +20,27 @@ using YOLOv8 models, backed by a cloud ML API, a Vue admin panel, and Firebase.
 Admin login (client-side gate): `Billsense` / `admin` (also `admin`/`admin123`,
 `admin@neuralyx.dev`/`neuralyx2026`).
 
+## Authenticity scoring — Real Measurement (v1.5.0 / API v17.5)
+
+The cloud ML API (`docker/app/main.py`) goes beyond "feature detected / not detected"
+to **measure** each scan and emit a calibrated **0–100 authenticity score**. Full design:
+[docs/REAL_MEASUREMENT_DESIGN.md](docs/REAL_MEASUREMENT_DESIGN.md).
+
+- **Calibrated score** = feature coverage + per-detection confidence + capture quality
+  (geometry placement is a bonus, never a penalty on a genuine note).
+- **Geometry** — each detected security feature is scored against a genuine reference
+  layout (`docker/app/reference_geometry.json`; empirical medians + BSP cross-check, built
+  on Colab GPU via `training/build_reference_geometry.py`).
+- **Quality gating** — blurry/dark captures return `NEEDS_RESCAN` instead of a guess.
+- **OVI/OVD colour-shift** (Multi-Scan) — measures the hue change of optically-variable
+  ink/device across angle frames; a confirmed shift boosts the verdict.
+- **Status tiers**: GENUINE · LIKELY GENUINE · NEEDS_RESCAN · COUNTERFEIT (forgery-only).
+- The Android app shows the score as a colour-coded bar on all three scan screens, with
+  per-feature "% placed" on the standard scan.
+
+Denomination model retrained on a merged YOLOv8 + COCO PH-banknote dataset (mAP50 0.83);
+pipeline in [`training/`](training/README.md). Still CNN (YOLOv8) — ORB is not used.
+
 ## Architecture
 
 ```

@@ -1,0 +1,7 @@
+# generated training artifacts — never commit
+merged_denom/
+merged_denom_smoke/
+runs/
+*.pt
+__pycache__/
+*.zip
