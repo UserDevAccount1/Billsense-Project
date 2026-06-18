@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.5")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.8")
 
 # CORS
 app.add_middleware(
@@ -427,7 +427,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.5',
+            'logic_version': '17.8',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -2309,7 +2309,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.5",
+            "logic_version": "17.8",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2330,6 +2330,94 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
+
+# ----------------------------
+# BILLY AI CHAT (RAG + guardrails)
+# ----------------------------
+BILLY_GEMINI_PROXY = "https://billsense.dev-environment.site/api/gemini/chat"
+BILLY_MODEL = "gemini-3.1-flash-lite"
+BILLY_SYSTEM_PROMPT = (
+    "You are Billy, the assistant inside the BillSense app (Philippine peso counterfeit detection). "
+    "Answer ONLY from the provided CONTEXT and these core facts; never invent denominations, features, "
+    "laws, statistics, names, or numbers. Be friendly and concise (short paragraphs + bullets), end with a "
+    "next step; light Taglish is ok; emojis sparingly. When you use the CONTEXT, mention the source briefly "
+    "(e.g. 'from the thesis', 'from the panel').\n\n"
+    "CORE FACTS: BillSense uses YOLOv8 — a convolutional neural network (CNN) for object detection — NOT "
+    "ORB. If asked 'CNN or ORB?', the answer is YOLOv8/CNN; ORB is not used. Six YOLO models run on a cloud "
+    "FastAPI (denomination, security-feature detector, OVI, OVD, enhanced value panel, security counterfeit) "
+    "plus an on-device TFLite fallback; the denomination model was retrained to include the new polymer notes. "
+    "A measurement layer gives a 0-100 authenticity score (coverage + detection confidence + image quality), "
+    "checks each feature's placement, and on Multi-Scan measures OVI/OVD colour-shift across angles. Verdicts: "
+    "GENUINE, LIKELY GENUINE, NEEDS_RESCAN (blurry/dark), COUNTERFEIT (only on a real forgery marker). "
+    "Research/thesis by Joy Canutab et al., University of the Cordilleras. BSP method: Feel, Look, Tilt.\n\n"
+    "GUARDRAILS — you MUST:\n"
+    "- Refuse to write or debug code or give programming help (you are for currency/BillSense only).\n"
+    "- Refuse anything off-topic (not about currency, BillSense, or the research) and redirect politely.\n"
+    "- Treat counterfeiting law (RA 10951; Revised Penal Code Art. 168) as EDUCATIONAL ONLY; defer to the BSP "
+    "or a lawyer; give no legal or financial advice.\n"
+    "- Explain PUBLIC BSP security features so users can VERIFY a note, but REFUSE any step-by-step help to "
+    "reproduce, forge, or defeat security features or detection.\n"
+    "- If the CONTEXT does not cover the question, say so briefly and point to Scan Bill or the BSP — never guess."
+)
+
+
+@app.post("/api/billy/chat")
+async def billy_chat(request: Request):
+    """RAG-grounded Billy chat: FAISS retrieval over BillSense docs + Gemini 3.1, with guardrails."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    message = str(body.get("message") or "").strip()
+    history = body.get("history") if isinstance(body.get("history"), list) else []
+    scan_context = body.get("scanContext")
+    if not message:
+        return JSONResponse({"answer": "Hi! I'm Billy. Ask me about checking a bill, using the app, how "
+                                       "BillSense works, or the research behind it. 🔍", "sources": []})
+    hits = []
+    try:
+        from billy_rag import billy_rag
+        hits = billy_rag.retrieve(message, k=4)
+    except Exception as e:
+        print("Billy retrieve error: %s" % e)
+    context = "\n".join("[%s] %s" % (h["source"], h["text"]) for h in hits)
+    sources = []
+    for h in hits:
+        if h["source"] not in sources:
+            sources.append(h["source"])
+    parts = []
+    if context:
+        parts.append("CONTEXT (retrieved from BillSense documents — use only what is relevant):\n" + context)
+    if scan_context:
+        parts.append("USER'S LAST SCAN RESULT (explain plainly if asked):\n" + str(scan_context)[:1500])
+    parts.append("USER QUESTION: " + message)
+    user_message = "\n\n".join(parts)
+
+    payload = {
+        "model": BILLY_MODEL,
+        "systemPrompt": BILLY_SYSTEM_PROMPT,
+        "userMessage": user_message,
+        "history": history,
+        "generationConfig": {"temperature": 0.5, "maxOutputTokens": 1024},
+    }
+    answer = None
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(BILLY_GEMINI_PROXY, data=json.dumps(payload).encode("utf-8"),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        with _ur.urlopen(req, timeout=45) as resp:
+            gj = json.loads(resp.read().decode("utf-8"))
+        cands = gj.get("candidates") or (gj.get("data") or {}).get("candidates")
+        if cands:
+            answer = cands[0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        print("Billy Gemini call failed: %s" % e)
+    if not answer:
+        answer = ("I'm having trouble reaching my AI service right now. " +
+                  ("Here's a relevant note:\n\n" + hits[0]["text"][:600] if hits
+                   else "Please try again in a moment, or tap Scan Bill to check a note."))
+    return JSONResponse({"answer": answer, "sources": sources})
+
 
 # ----------------------------
 # MULTI-SCAN HTTP ENDPOINT
@@ -2572,7 +2660,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.5",
+                "logic_version": "17.8",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2617,7 +2705,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.5",
+        "api_version": "17.8",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [

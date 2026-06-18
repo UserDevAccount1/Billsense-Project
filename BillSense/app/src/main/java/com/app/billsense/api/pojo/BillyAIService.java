@@ -1,5 +1,6 @@
 package com.app.billsense.api.pojo;
 
+import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -7,7 +8,14 @@ import androidx.annotation.NonNull;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -37,33 +45,169 @@ public class BillyAIService {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
 
+    // --- Conversation memory (multi-turn) ---
+    private static final List<String[]> HISTORY = new ArrayList<>();   // each entry = {role, text}
+    private static final int MAX_HISTORY = 10;                          // last ~5 exchanges
+
+    /** Clear memory — call when a new chat session starts. */
+    public static void resetConversation() {
+        synchronized (HISTORY) { HISTORY.clear(); }
+    }
+
+    private static void recordTurn(String user, String model) {
+        synchronized (HISTORY) {
+            HISTORY.add(new String[]{"user", user});
+            HISTORY.add(new String[]{"model", model});
+            while (HISTORY.size() > MAX_HISTORY) HISTORY.remove(0);
+        }
+    }
+
+    // --- RAG: thesis knowledge retrieval (assets/billy_thesis.json) ---
+    private static final List<String[]> THESIS_CHUNKS = new ArrayList<>();  // each = {section, text}
+    private static volatile boolean thesisLoaded = false;
+
+    /** Load + chunk the bundled thesis once, so Billy can retrieve real research details. */
+    public static void initThesis(Context ctx) {
+        if (thesisLoaded || ctx == null) return;
+        try {
+            InputStream is = ctx.getAssets().open("billy_thesis.json");
+            BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            br.close();
+            JSONObject sections = new JSONObject(sb.toString()).optJSONObject("sections");
+            if (sections != null) {
+                java.util.Iterator<String> keys = sections.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    JSONObject sec = sections.optJSONObject(k);
+                    if (sec == null) continue;
+                    String title = sec.optString("title", k);
+                    for (String chunk : chunkText(sec.optString("content", ""), 600)) {
+                        if (chunk.trim().length() > 40) THESIS_CHUNKS.add(new String[]{title, chunk.trim()});
+                    }
+                }
+            }
+            thesisLoaded = true;
+            Log.i(TAG, "Thesis knowledge loaded: " + THESIS_CHUNKS.size() + " chunks");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not load thesis knowledge: " + e.getMessage());
+        }
+    }
+
+    private static List<String> chunkText(String text, int target) {
+        List<String> out = new ArrayList<>();
+        if (text == null) return out;
+        StringBuilder cur = new StringBuilder();
+        for (String p : text.split("\\n+")) {
+            p = p.trim();
+            if (p.isEmpty()) continue;
+            if (cur.length() + p.length() > target && cur.length() > 0) {
+                out.add(cur.toString());
+                cur.setLength(0);
+            }
+            while (p.length() > target * 2) { out.add(p.substring(0, target)); p = p.substring(target); }
+            cur.append(cur.length() > 0 ? " " : "").append(p);
+        }
+        if (cur.length() > 0) out.add(cur.toString());
+        return out;
+    }
+
+    /** Retrieve the most relevant thesis chunks for a query (keyword overlap). */
+    private static String retrieveThesis(String query) {
+        if (!thesisLoaded || THESIS_CHUNKS.isEmpty() || query == null) return null;
+        String[] qWords = query.toLowerCase().replaceAll("[^a-z0-9 ]", " ").split("\\s+");
+        List<double[]> scored = new ArrayList<>();   // {index, score}
+        for (int i = 0; i < THESIS_CHUNKS.size(); i++) {
+            String text = THESIS_CHUNKS.get(i)[1].toLowerCase();
+            double score = 0;
+            for (String w : qWords) {
+                if (w.length() < 4) continue;        // skip short words / stopwords
+                int idx = 0;
+                while ((idx = text.indexOf(w, idx)) >= 0) { score++; idx += w.length(); }
+            }
+            if (score > 0) scored.add(new double[]{i, score});
+        }
+        if (scored.isEmpty()) return null;
+        Collections.sort(scored, (a, b) -> Double.compare(b[1], a[1]));
+        StringBuilder sb = new StringBuilder();
+        int used = 0;
+        for (double[] s : scored) {
+            if (used >= 3 || sb.length() > 1800) break;
+            String[] ch = THESIS_CHUNKS.get((int) s[0]);
+            sb.append("• [").append(ch[0]).append("] ").append(ch[1]).append("\n");
+            used++;
+        }
+        return sb.length() > 0 ? sb.toString() : null;
+    }
+
     // Real AI backend: the cPanel server-side Gemini proxy (key stays on the server).
     // NOTE: this is the cPanel host, NOT the Cloud Run API_BASE_URL.
     private static final String GEMINI_PROXY = "https://billsense.dev-environment.site/api/gemini/chat";
 
+    // v2: server-side Billy brain (FAISS RAG over the docs + guardrails + Gemini 3.1) on Cloud Run.
+    private static final String BILLY_ENDPOINT =
+            com.app.billsense.BuildConfig.API_BASE_URL + "/api/billy/chat";
+    // Optional last-scan context for the "Explain my scan" feature.
+    private static volatile String scanContext = null;
+    public static void setScanContext(String s) { scanContext = s; }
+
     // Billy's persona + knowledge. Used for every AI answer so Billy is accurate
     // and never invents denominations, features, laws, or research details.
     private static final String SYSTEM_PROMPT =
-            "You are Billy, the AI assistant inside the BillSense Android app — a Philippine peso " +
-            "counterfeit-detection app. Be friendly, concise, use short paragraphs and bullet points, " +
-            "and end with a clear next step. Use emojis sparingly (💵 🔍 ✅).\n\n" +
-            "WHAT YOU HELP WITH:\n" +
-            "1) Telling real Philippine peso bills (New Generation Currency / Enhanced NGC) from fakes — " +
-            "watermark, security thread, serial number, see-through register, concealed value, optically " +
-            "variable ink (OVI), optically variable device (OVD), tactile marks, and the enhanced value " +
-            "panel (EVP) on 500 and 1000-peso bills. Teach the BSP 'Feel, Look, Tilt' method.\n" +
-            "2) Using the BillSense app: Scan Bill (real-time), Multi-Scan, Video Scan, Compare Bill, " +
-            "Scan History, and reporting suspected counterfeits via Evidence Submission / Cases.\n" +
-            "3) Philippine anti-counterfeiting law (RA 10951; Revised Penal Code Art. 168) — educational only.\n\n" +
-            "RESEARCH BACKGROUND (answer accurately if asked who made BillSense / about the study):\n" +
-            "BillSense is a research/thesis by Joy Canutab and co-researchers (Canutab et al.) at the " +
-            "University of the Cordilleras, Baguio City, Philippines. It is an AI-driven mobile app detecting " +
-            "counterfeit vs. genuine PHP banknotes, aimed at everyday users and MSMEs. Trained on 3,113 " +
-            "verified authentic & counterfeit NGC/ENGC banknotes; uses YOLOv8 object detection (with an " +
-            "on-device TFLite fallback). Theoretical frameworks: Human Error Theory, Routine Activity Theory, " +
-            "and Computer Vision Theory; design-thinking methodology; aligned with UN SDG 16 (Target 16.4).\n\n" +
-            "If asked something unrelated to currency, BillSense, or the research, gently steer back. " +
-            "Never invent denominations, security features, laws, statistics, researcher names, or research details.";
+            "You are Billy, the friendly AI assistant inside the BillSense Android app — a Philippine peso " +
+            "counterfeit-detection app. Be warm, concise and practical: short paragraphs, bullet points, and a " +
+            "clear next step. Plain English or light Taglish is fine. Use emojis sparingly (💵 🔍 ✅). " +
+            "Only answer from the knowledge below; if you don't know, say so and point to Scan Bill or the BSP. " +
+            "Never invent denominations, security features, laws, statistics, researcher names, model details, or numbers.\n\n" +
+
+            "WHAT BILLSENSE IS:\n" +
+            "An AI-driven mobile app that tells genuine Philippine banknotes from counterfeits in real time — " +
+            "New Generation Currency (NGC), Enhanced NGC, and the newer POLYMER notes (₱1000 polymer, and the " +
+            "2024 polymer ₱500/₱100/₱50). Built for everyday users and small businesses (MSMEs) who rely on manual checks.\n\n" +
+
+            "THE RESEARCH (answer accurately if asked who made it / about the study / about Joy):\n" +
+            "BillSense is an undergraduate research / thesis led by Joy Canutab with co-researchers (Canutab et al.) " +
+            "at the University of the Cordilleras, Baguio City, Philippines. Goal: an accessible AI tool that reduces " +
+            "losses from counterfeit cash. Theoretical frameworks: Human Error Theory, Routine Activity Theory, and " +
+            "Computer Vision Theory; built with a design-thinking methodology (prototype → user feedback → expert " +
+            "evaluation). Aligned with UN Sustainable Development Goal 16 (Target 16.4 — reducing illicit financial flows).\n\n" +
+
+            "THE TECHNOLOGY (be precise):\n" +
+            "BillSense uses **YOLOv8**, a convolutional-neural-network (CNN) **object-detection** model. It does NOT use " +
+            "ORB feature-matching, and it is not a plain image classifier — detection and localisation are done by YOLOv8. " +
+            "If asked 'CNN or ORB?': the answer is YOLOv8 (CNN-based object detection); ORB is not used. " +
+            "Six YOLO models run on a cloud FastAPI service (Google Cloud Run): (1) denomination, (2) a security-feature " +
+            "detector, (3) optically variable ink (OVI), (4) optically variable device (OVD), (5) enhanced value panel (EVP), " +
+            "and (6) a security-feature counterfeit model. There is also an on-device TFLite fallback for offline use. " +
+            "The denomination model was retrained on a merged YOLOv8 + COCO Philippine-banknote dataset that includes polymer notes.\n\n" +
+
+            "HOW A SCAN WORKS (current 'real measurement' logic):\n" +
+            "The camera frame goes to the cloud YOLO models, which detect the denomination and which security features are " +
+            "present. A measurement layer then computes a calibrated 0–100 AUTHENTICITY SCORE from: feature coverage + " +
+            "detection confidence + image quality. It also checks each feature's PLACEMENT against a genuine reference layout, " +
+            "and on Multi-Scan it measures OVI/OVD COLOUR-SHIFT across angles. Verdict tiers: GENUINE, LIKELY GENUINE, " +
+            "NEEDS_RESCAN (when the photo is too blurry/dark), and COUNTERFEIT (only when a real forgery marker is found, " +
+            "e.g. a FALSE enhanced value panel). A genuine note is never flagged counterfeit just for low feature coverage.\n\n" +
+
+            "SCAN MODES:\n" +
+            "• Standard — quick single photo (denomination + visible features). \n" +
+            "• Multi-Scan — several angles; this is how tilt features like OVI/OVD colour-shift get verified.\n" +
+            "• Video Scan — continuous detection.  • Upload Image — analyse a saved photo.\n" +
+            "Plus real-time live scanning, Scan History, and reporting suspected fakes via Evidence Submission / Cases.\n\n" +
+
+            "SECURITY FEATURES (NGC / Enhanced NGC) and the BSP 'Feel, Look, Tilt' method:\n" +
+            "watermark (shadow portrait + denomination, seen against light), embedded security thread, see-through register, " +
+            "concealed value, optically variable ink (OVI), optically variable device (OVD) patch, matching serial numbers, " +
+            "the enhanced value panel (EVP) on ₱500 & ₱1000, embossed/tactile marks for the visually impaired, and microprint.\n\n" +
+
+            "HONEST LIMITS (say these when relevant):\n" +
+            "A single front-lit phone photo cannot capture the watermark/see-through (need back-light), OVI/OVD colour-shift " +
+            "(need tilt → use Multi-Scan), or UV features (a phone has no UV light). BillSense guides the check; the BSP is the " +
+            "final authority. Law (RA 10951; Revised Penal Code Art. 168) is for education only — not legal advice.\n\n" +
+
+            "If asked something unrelated to currency, BillSense, or the research, gently steer back.";
 
     public interface BillyCallback {
         void onSuccess(String response);
@@ -75,15 +219,45 @@ public class BillyAIService {
      * falls back to API if no match found.
      */
     public static void getResponse(String userMessage, @NonNull BillyCallback callback) {
-        // Try local knowledge base first (instant response)
-        String localResponse = getLocalResponse(userMessage);
-        if (localResponse != null) {
-            callback.onSuccess(localResponse);
+        // Instant, offline answers only for trivial greetings / thanks.
+        String quick = getQuickLocalResponse(userMessage);
+        if (quick != null) {
+            callback.onSuccess(quick);
             return;
         }
-
-        // Fall back to Billy API endpoint
+        // Everything substantive goes to the AI (Gemini) with Billy's full knowledge base,
+        // so answers are intelligent and current. The canned KB is used only as an OFFLINE
+        // fallback (see offlineAnswer inside fetchFromAPI).
         fetchFromAPI(userMessage, callback);
+    }
+
+    /** Instant offline answers ONLY for greetings / thanks — everything else uses the AI. */
+    private static String getQuickLocalResponse(String userMessage) {
+        String lower = userMessage.toLowerCase().trim();
+        if (matchesAny(lower, "hello", "hi", "hey", "good morning", "good afternoon",
+                "good evening", "kumusta", "musta")) {
+            return "👋 Hi! I'm Billy, your BillSense assistant.\n\n" +
+                    "Ask me about checking a peso bill, using the app (Standard / Multi-Scan / Video), " +
+                    "the security features, how the AI model works, or the research behind BillSense.\n\n" +
+                    "What would you like to know? 🔍";
+        }
+        if (matchesAny(lower, "thank", "thanks", "salamat", "thank you")) {
+            return "You're welcome! 😊 Stay safe and always Feel, Look, Tilt your bills.\n\n" +
+                    "Tap Scan Bill whenever you want a quick check. ✅";
+        }
+        return null;
+    }
+
+    /** Offline answer: canned KB → offline thesis RAG → generic helpful fallback. */
+    private static String offlineAnswer(String userMessage) {
+        String kb = getLocalResponse(userMessage);
+        if (kb != null) return kb;
+        String excerpt = retrieveThesis(userMessage);
+        if (excerpt != null) {
+            return "I'm offline right now, but here's what the BillSense research says:\n\n" + excerpt
+                    + "\nReconnect for a full answer. 🔍";
+        }
+        return getFallbackResponse(userMessage);
     }
 
     /**
@@ -206,6 +380,24 @@ public class BillyAIService {
                     "Would you like to know how to protect yourself from receiving counterfeit bills?";
         }
 
+        // How the AI model works (YOLO/CNN vs ORB, the current trained model)
+        if (matchesAny(lower, "model", "yolo", "cnn", "orb", "algorithm", "neural network",
+                "deep learning", "machine learning", "object detection", "how does it work",
+                "how it works", "how it detect", "how does the app detect", "how is it trained", "trained")) {
+            return "🤖 How BillSense detects bills:\n\n" +
+                    "BillSense uses YOLOv8 — a convolutional neural network (CNN) for object detection. " +
+                    "It does NOT use ORB feature-matching; the detection is done by YOLOv8.\n\n" +
+                    "• Six YOLO models run on a cloud service: denomination, security-feature detector, OVI, " +
+                    "OVD, enhanced value panel, and a security-feature counterfeit model — plus an on-device " +
+                    "TFLite fallback for offline use.\n" +
+                    "• The denomination model was retrained on Philippine banknotes including the new polymer notes.\n" +
+                    "• A measurement layer gives a 0–100 authenticity score from feature coverage + detection " +
+                    "confidence + image quality, checks each feature's placement, and (on Multi-Scan) measures " +
+                    "OVI/OVD colour-shift across angles.\n\n" +
+                    "Verdicts: GENUINE, LIKELY GENUINE, NEEDS_RESCAN (blurry/dark), or COUNTERFEIT (only on a " +
+                    "real forgery sign). Tap Scan Bill to try it! 🔍";
+        }
+
         // Research / About BillSense (who made it, the thesis behind it)
         if (matchesAny(lower, "who made", "who created", "who developed", "who built", "who conducted",
                 "researcher", "research", "thesis", "canutab", "cordillera", "university",
@@ -216,8 +408,9 @@ public class BillyAIService {
                     "📌 Goal: an AI-driven mobile app that detects counterfeit vs. genuine " +
                     "Philippine banknotes (NGC & ENGC series), helping everyday users and small " +
                     "businesses (MSMEs) who struggle with manual checks.\n\n" +
-                    "📌 How it works: deep-learning object detection (YOLOv8) trained on 3,113 " +
-                    "verified authentic & counterfeit bills — real-time, no perfect lighting needed.\n\n" +
+                    "📌 How it works: YOLOv8 (a CNN object-detection model — not ORB) running six models " +
+                    "on a cloud service plus an on-device fallback, retrained on Philippine banknotes including " +
+                    "the new polymer notes — real-time, no perfect lighting needed.\n\n" +
                     "📌 Foundations: Human Error Theory, Routine Activity Theory, and Computer " +
                     "Vision Theory, built with a design-thinking methodology (prototype → user feedback → " +
                     "expert evaluation).\n\n" +
@@ -278,22 +471,24 @@ public class BillyAIService {
      */
     private static void fetchFromAPI(String userMessage, @NonNull BillyCallback callback) {
         try {
-            // Rewrite query for better context
-            String contextualQuery = rewriteQuery(userMessage);
-
+            // Conversation memory: send prior turns so Billy handles follow-ups.
+            JSONArray historyArr = new JSONArray();
+            synchronized (HISTORY) {
+                for (String[] turn : HISTORY) {
+                    historyArr.put(new JSONObject().put("role", turn[0]).put("text", turn[1]));
+                }
+            }
+            // Server does the FAISS retrieval + guardrails + Gemini 3.1; we just send the question.
             JSONObject json = new JSONObject();
-            json.put("model", "gemini-flash-latest");
-            json.put("systemPrompt", SYSTEM_PROMPT);
-            json.put("userMessage", userMessage);
-            json.put("history", new JSONArray());
-            JSONObject genCfg = new JSONObject();
-            genCfg.put("temperature", 0.6);
-            genCfg.put("maxOutputTokens", 1024);
-            json.put("generationConfig", genCfg);
+            json.put("message", userMessage);
+            json.put("history", historyArr);
+            if (scanContext != null && !scanContext.isEmpty()) {
+                json.put("scanContext", scanContext);
+            }
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
             Request request = new Request.Builder()
-                    .url(GEMINI_PROXY)
+                    .url(BILLY_ENDPOINT)
                     .post(body)
                     .addHeader("Content-Type", "application/json")
                     .build();
@@ -303,32 +498,41 @@ public class BillyAIService {
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                     if (response.isSuccessful() && response.body() != null) {
                         try {
-                            String responseBody = response.body().string();
-                            String billyResponse = extractGeminiText(responseBody);
-                            if (billyResponse == null || billyResponse.isEmpty()) {
-                                billyResponse = getFallbackResponse(userMessage);
+                            JSONObject jr = new JSONObject(response.body().string());
+                            String answer = jr.optString("answer", "");
+                            if (answer.isEmpty()) {
+                                callback.onSuccess(offlineAnswer(userMessage));
+                                return;
                             }
-                            callback.onSuccess(billyResponse);
+                            recordTurn(userMessage, answer);   // memory keeps the clean answer
+                            // Append source citations (the documents Billy drew from)
+                            JSONArray srcs = jr.optJSONArray("sources");
+                            if (srcs != null && srcs.length() > 0) {
+                                StringBuilder sb = new StringBuilder(answer).append("\n\n📚 Sources: ");
+                                for (int i = 0; i < srcs.length(); i++) {
+                                    if (i > 0) sb.append(" · ");
+                                    sb.append(srcs.optString(i));
+                                }
+                                answer = sb.toString();
+                            }
+                            callback.onSuccess(answer);
                         } catch (Exception e) {
-                            // API returned unexpected format — use fallback
-                            callback.onSuccess(getFallbackResponse(userMessage));
+                            callback.onSuccess(offlineAnswer(userMessage));
                         }
                     } else {
-                        // API error — use intelligent fallback
-                        callback.onSuccess(getFallbackResponse(userMessage));
+                        callback.onSuccess(offlineAnswer(userMessage));
                     }
                 }
 
                 @Override
                 public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                    Log.e(TAG, "API call failed: " + e.getMessage());
-                    // Network error — use intelligent fallback
-                    callback.onSuccess(getFallbackResponse(userMessage));
+                    Log.e(TAG, "Billy endpoint failed: " + e.getMessage());
+                    callback.onSuccess(offlineAnswer(userMessage));
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Error building request: " + e.getMessage());
-            callback.onSuccess(getFallbackResponse(userMessage));
+            Log.e(TAG, "Error building Billy request: " + e.getMessage());
+            callback.onSuccess(offlineAnswer(userMessage));
         }
     }
 
