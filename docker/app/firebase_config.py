@@ -45,20 +45,21 @@ class FirebaseClient:
                 self.test_storage()
                 
             else:
-                print("❌ Service account key file not found")
-                print("💡 Checking for environment variable fallback...")
-                # Try environment variable as fallback
-                if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
-                    print("✅ Using GOOGLE_APPLICATION_CREDENTIALS from environment")
-                    cred = credentials.ApplicationDefault()
-                    firebase_admin.initialize_app(cred, {
-                        'storageBucket': 'bill-sense-aec6b.firebasestorage.app'
-                    })
-                    self.db = firestore.client()
-                    self.bucket = storage.bucket()
-                    print("✅ Firebase initialized with application default credentials")
-                else:
-                    raise FileNotFoundError("serviceAccountKey.json not found and no fallback credentials available")
+                # No key file (this is the normal case on Cloud Run) — use Application
+                # Default Credentials, i.e. the runtime service account, provided
+                # automatically via the metadata server. No GOOGLE_APPLICATION_CREDENTIALS
+                # env var is needed on Cloud Run. (Previously this branch raised, so Firebase
+                # never initialised -> annotated_image_url="image_storage_error".)
+                print("⚠️ serviceAccountKey.json not found — using Application Default Credentials")
+                cred = credentials.ApplicationDefault()
+                firebase_admin.initialize_app(cred, {
+                    'storageBucket': 'bill-sense-aec6b.firebasestorage.app'
+                })
+                self.db = firestore.client()
+                self.bucket = storage.bucket()
+                print("✅ Firebase initialized with Application Default Credentials")
+                self.test_firestore()
+                self.test_storage()
                 
         except Exception as e:
             print(f"❌ Firebase initialization error: {e}")

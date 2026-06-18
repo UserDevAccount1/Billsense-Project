@@ -1,5 +1,6 @@
 package com.app.billsense.api.pojo;
 
+import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -7,7 +8,14 @@ import androidx.annotation.NonNull;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -36,6 +44,103 @@ public class BillyAIService {
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
+
+    // --- Conversation memory (multi-turn) ---
+    private static final List<String[]> HISTORY = new ArrayList<>();   // each entry = {role, text}
+    private static final int MAX_HISTORY = 10;                          // last ~5 exchanges
+
+    /** Clear memory — call when a new chat session starts. */
+    public static void resetConversation() {
+        synchronized (HISTORY) { HISTORY.clear(); }
+    }
+
+    private static void recordTurn(String user, String model) {
+        synchronized (HISTORY) {
+            HISTORY.add(new String[]{"user", user});
+            HISTORY.add(new String[]{"model", model});
+            while (HISTORY.size() > MAX_HISTORY) HISTORY.remove(0);
+        }
+    }
+
+    // --- RAG: thesis knowledge retrieval (assets/billy_thesis.json) ---
+    private static final List<String[]> THESIS_CHUNKS = new ArrayList<>();  // each = {section, text}
+    private static volatile boolean thesisLoaded = false;
+
+    /** Load + chunk the bundled thesis once, so Billy can retrieve real research details. */
+    public static void initThesis(Context ctx) {
+        if (thesisLoaded || ctx == null) return;
+        try {
+            InputStream is = ctx.getAssets().open("billy_thesis.json");
+            BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+            br.close();
+            JSONObject sections = new JSONObject(sb.toString()).optJSONObject("sections");
+            if (sections != null) {
+                java.util.Iterator<String> keys = sections.keys();
+                while (keys.hasNext()) {
+                    String k = keys.next();
+                    JSONObject sec = sections.optJSONObject(k);
+                    if (sec == null) continue;
+                    String title = sec.optString("title", k);
+                    for (String chunk : chunkText(sec.optString("content", ""), 600)) {
+                        if (chunk.trim().length() > 40) THESIS_CHUNKS.add(new String[]{title, chunk.trim()});
+                    }
+                }
+            }
+            thesisLoaded = true;
+            Log.i(TAG, "Thesis knowledge loaded: " + THESIS_CHUNKS.size() + " chunks");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not load thesis knowledge: " + e.getMessage());
+        }
+    }
+
+    private static List<String> chunkText(String text, int target) {
+        List<String> out = new ArrayList<>();
+        if (text == null) return out;
+        StringBuilder cur = new StringBuilder();
+        for (String p : text.split("\\n+")) {
+            p = p.trim();
+            if (p.isEmpty()) continue;
+            if (cur.length() + p.length() > target && cur.length() > 0) {
+                out.add(cur.toString());
+                cur.setLength(0);
+            }
+            while (p.length() > target * 2) { out.add(p.substring(0, target)); p = p.substring(target); }
+            cur.append(cur.length() > 0 ? " " : "").append(p);
+        }
+        if (cur.length() > 0) out.add(cur.toString());
+        return out;
+    }
+
+    /** Retrieve the most relevant thesis chunks for a query (keyword overlap). */
+    private static String retrieveThesis(String query) {
+        if (!thesisLoaded || THESIS_CHUNKS.isEmpty() || query == null) return null;
+        String[] qWords = query.toLowerCase().replaceAll("[^a-z0-9 ]", " ").split("\\s+");
+        List<double[]> scored = new ArrayList<>();   // {index, score}
+        for (int i = 0; i < THESIS_CHUNKS.size(); i++) {
+            String text = THESIS_CHUNKS.get(i)[1].toLowerCase();
+            double score = 0;
+            for (String w : qWords) {
+                if (w.length() < 4) continue;        // skip short words / stopwords
+                int idx = 0;
+                while ((idx = text.indexOf(w, idx)) >= 0) { score++; idx += w.length(); }
+            }
+            if (score > 0) scored.add(new double[]{i, score});
+        }
+        if (scored.isEmpty()) return null;
+        Collections.sort(scored, (a, b) -> Double.compare(b[1], a[1]));
+        StringBuilder sb = new StringBuilder();
+        int used = 0;
+        for (double[] s : scored) {
+            if (used >= 3 || sb.length() > 1800) break;
+            String[] ch = THESIS_CHUNKS.get((int) s[0]);
+            sb.append("• [").append(ch[0]).append("] ").append(ch[1]).append("\n");
+            used++;
+        }
+        return sb.length() > 0 ? sb.toString() : null;
+    }
 
     // Real AI backend: the cPanel server-side Gemini proxy (key stays on the server).
     // NOTE: this is the cPanel host, NOT the Cloud Run API_BASE_URL.
@@ -356,11 +461,25 @@ public class BillyAIService {
             // Rewrite query for better context
             String contextualQuery = rewriteQuery(userMessage);
 
+            // Conversation memory: send prior turns so Billy handles follow-ups.
+            JSONArray historyArr = new JSONArray();
+            synchronized (HISTORY) {
+                for (String[] turn : HISTORY) {
+                    historyArr.put(new JSONObject().put("role", turn[0]).put("text", turn[1]));
+                }
+            }
+            // RAG: retrieve relevant thesis excerpts and ground the question on them.
+            String excerpt = retrieveThesis(userMessage);
+            String sendMessage = (excerpt != null)
+                    ? ("Relevant excerpts from the BillSense thesis (Canutab et al.) — use them if helpful "
+                       + "and do not invent beyond them:\n" + excerpt + "\nUser question: " + userMessage)
+                    : userMessage;
+
             JSONObject json = new JSONObject();
-            json.put("model", "gemini-2.5-flash-lite");  // reliable + fast; "-latest" 503s under load
+            json.put("model", "gemini-3.1-flash-lite");   // Gemini 3.1 (flash-lite tier is within quota)
             json.put("systemPrompt", SYSTEM_PROMPT);
-            json.put("userMessage", userMessage);
-            json.put("history", new JSONArray());
+            json.put("userMessage", sendMessage);
+            json.put("history", historyArr);
             JSONObject genCfg = new JSONObject();
             genCfg.put("temperature", 0.6);
             genCfg.put("maxOutputTokens", 1024);
@@ -383,6 +502,7 @@ public class BillyAIService {
                             if (billyResponse == null || billyResponse.isEmpty()) {
                                 billyResponse = offlineAnswer(userMessage);
                             }
+                            recordTurn(userMessage, billyResponse);
                             callback.onSuccess(billyResponse);
                         } catch (Exception e) {
                             // API returned unexpected format — use fallback

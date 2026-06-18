@@ -75,6 +75,10 @@ public class ChatBotActivity extends AppCompatActivity {
         userId = PrefManager.getInstance().getUserId();
         fbUtils = new FBUtils();
 
+        // Load the thesis knowledge for Billy's RAG retrieval (once) + start a fresh chat session
+        BillyAIService.initThesis(getApplicationContext());
+        BillyAIService.resetConversation();
+
         setupToolbar();
         setupRecyclerView();
 

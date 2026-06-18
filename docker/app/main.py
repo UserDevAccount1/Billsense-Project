@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.6")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.7")
 
 # CORS
 app.add_middleware(
@@ -427,7 +427,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.6',
+            'logic_version': '17.7',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -2309,7 +2309,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.6",
+            "logic_version": "17.7",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2572,7 +2572,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.6",
+                "logic_version": "17.7",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2617,7 +2617,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.6",
+        "api_version": "17.7",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
