@@ -11,13 +11,15 @@
 // So we resolve the proxy base at runtime: relative when on cPanel,
 // absolute (to the cPanel host, CORS-allowed) when anywhere else.
 //
-// We still walk a Pro -> Flash -> Flash-Lite chain on 429/503 because Pro
-// has a tight free-tier and even paid tier can return overloaded errors.
-
+// We walk a reliability-first chain on 429/503. gemini-3.1-flash-lite leads because
+// it is the verified-stable tier (the app's server-side Billy uses it); the heavier
+// Pro/Flash tiers have tight free-tier quota and frequently return 429/503, which used
+// to take Billy down entirely ("All Gemini tiers failed"). Reliable first, quality next.
 export const MODEL_CHAIN = [
-  'gemini-pro-latest',     // newest Pro — best, smallest free quota
-  'gemini-flash-latest',   // newest Flash — Gemini 3 Flash Preview today
-  'gemini-2.5-flash-lite'  // bulletproof fallback
+  'gemini-3.1-flash-lite', // verified-stable — primary (same tier the app's Billy uses)
+  'gemini-flash-latest',   // newest Flash — better quality when available
+  'gemini-2.5-flash-lite', // bulletproof fallback
+  'gemini-pro-latest'      // best quality but tight free quota — last resort
 ]
 
 const CPANEL_PROXY_ORIGIN = 'https://billsense.dev-environment.site'

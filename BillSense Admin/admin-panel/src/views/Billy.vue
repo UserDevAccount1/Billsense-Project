@@ -58,7 +58,7 @@
     <footer class="footer-note">
       <span class="material-icons">info</span>
       <span>
-        Billy runs on Gemini with a Pro → Flash → Flash-Lite fallback chain ({{ activeModel }}).
+        Billy runs on Gemini with a reliability-first fallback chain — 3.1-Flash-Lite → Flash → Pro ({{ activeModel }}).
         Requests go through the same-origin server proxy at /api/gemini/chat — the API key stays
         on the server and never reaches the browser.
       </span>
