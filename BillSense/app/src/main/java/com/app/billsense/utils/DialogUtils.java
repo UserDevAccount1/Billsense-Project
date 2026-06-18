@@ -181,9 +181,20 @@ public class DialogUtils {
             dialog.getWindow().setAttributes(layoutParams);
         }
 
-        if (detections != null){
-            binding.scanDetectionContent.setText(detections.getContent());
+        // Show the loaded overview; fall back to a built-in description if the Detections
+        // record hasn't loaded yet (async) or is empty — so the window is never blank.
+        String content = (detections != null) ? detections.getContent() : null;
+        if (content == null || content.trim().isEmpty()) {
+            content = "📋 Standard Scan — Authenticity Check\n\n" +
+                    "• Identifies the bill's denomination (₱20–₱1000)\n" +
+                    "• Verifies its security features (security thread, serial number, " +
+                    "concealed value, watermark, see-through mark; OVI/OVD/value panel on ₱500/₱1000)\n" +
+                    "• Gives an authenticity score and verdict (Genuine / Likely Genuine)\n\n" +
+                    "Place the whole bill flat in good lighting and hold steady — " +
+                    "detection starts automatically.\n\n" +
+                    "Tap “Begin Detection” to start.";
         }
+        binding.scanDetectionContent.setText(content);
 
         binding.beginScanBtn.setOnClickListener(view -> {
             activity.startActivity(new Intent(activity, StandardScanActivity.class));

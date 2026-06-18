@@ -48,9 +48,10 @@
             android:id="@+id/scan_detection_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="18sp"
+            android:textSize="15sp"
+            android:lineSpacingExtra="2dp"
             android:padding="5dp"
-            android:textColor="@color/text_color_black"
+            android:textColor="@color/text_color_white"
             android:fontFamily="@font/poppins"/>
 
     </ScrollView>
