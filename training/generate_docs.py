@@ -12,7 +12,21 @@ os.makedirs(OUT, exist_ok=True)
 DOC = [
     ('title', "BillSense — How Scanning & Counterfeit Detection Work"),
     ('sub',   "How the models work • what the system measures • old-vs-new model metrics"),
-    ('sub',   "Updated 2026-06-18  ·  Server API v17.10  ·  Denomination model v2 (retrained)"),
+    ('sub',   "Updated 2026-06-18  ·  Server API v17.13  ·  Denomination v2 + securitycf v1"),
+
+    ('h1', "0. Update — Real Counterfeit Detection is Now Live"),
+    ('p', "As of server API v17.13, BillSense has a dedicated counterfeit model, securitycf.pt "
+          "(16 classes: 8 genuine security features + 8 FALSE markers), trained on labelled real AND "
+          "fake banknote features. The scan now:"),
+    ('b', [
+        "Detects watermark, see-through, shadow thread, security thread, concealed value, OVI and EVP "
+        "(the security models previously lacked the labelled data for the hard ones).",
+        "Flags forgeries directly: any FALSE marker (false watermark, false security thread, false OVI, "
+        "false bill, etc.) makes the verdict COUNTERFEIT and names the marker.",
+    ]),
+    ('p', "So the system below — previously a \"genuine-feature verifier\" — now also actively catches "
+          "fakes. The sections that follow describe the full pipeline; the securitycf additions are noted "
+          "in the relevant places."),
 
     ('h1', "1. The Honest Headline"),
     ('p', "BillSense does NOT have a single real-vs-fake AI model. There is no model you can hand a "
