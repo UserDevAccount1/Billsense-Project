@@ -27,12 +27,23 @@
         </div>
       </div>
 
-      <h3 class="sec">Model Ensemble</h3>
+      <h3 class="sec">Model Ensemble — versions &amp; training</h3>
+      <p class="docnote">
+        Latest retrain <b>2026-06-18</b>: denomination <b>v2</b> (mAP@50 0.93, ₱50 recall 38%→97%)
+        + <b>securitycf v1</b> (real counterfeit detection — false_* markers → COUNTERFEIT).
+        Full update history &amp; training docs in the repo:
+        <code>docs/MODEL_REGISTRY.md</code> · <code>docs/HOW_COUNTERFEIT_DETECTION_WORKS.md</code>.
+      </p>
       <div class="models">
         <div v-for="m in ensemble" :key="m.file" class="mcard">
-          <div class="mfile">{{ m.file }}</div>
+          <div class="mfile">{{ m.file }} <span class="ver">{{ m.version }}</span></div>
           <div class="mrole">{{ m.role }}</div>
           <div class="mout">{{ m.out }}</div>
+          <div class="mmeta">
+            <span>Trained: {{ m.trained }}</span>
+            <span v-if="m.metric && m.metric !== '—'">· {{ m.metric }}</span>
+          </div>
+          <div v-if="m.note" class="mnote">{{ m.note }}</div>
         </div>
       </div>
     </div>
@@ -44,12 +55,20 @@ import { value } from '../services/db.js'
 
 const API = 'https://billsense-api-340624938055.asia-southeast2.run.app'
 const ENSEMBLE = [
-  { file: 'denomination2.pt', role: 'Denomination classifier', out: '20 · 50 · 100 · 200 · 500 · 1000' },
-  { file: 'security_best.pt', role: 'Security features', out: 'watermark · thread · serial · concealed value · see-through' },
-  { file: 'ovi.pt', role: 'Optically Variable Ink', out: 'present / absent / suspicious' },
-  { file: 'ovd.pt', role: 'Optically Variable Device', out: 'foil region polygons' },
-  { file: 'evp.pt', role: 'Enhanced Value Panel', out: '500 / 1000 EVP variants' },
-  { file: 'counterfeit_best.pt', role: 'Direct counterfeit classifier', out: 'UV-thread · anomalies' }
+  { file: 'denomination2.pt', role: 'Denomination classifier', out: '20 · 50 · 100 · 200 · 500 · 1000',
+    version: 'v2', trained: '2026-06-18', metric: 'mAP@50 0.93', note: 'Retrained on 3 full-res datasets; ₱50 recall 38%→97%' },
+  { file: 'securitycf.pt', role: 'Security features + counterfeit', out: 'watermark · see-through · shadow · thread · concealed · OVI · EVP + false_* markers',
+    version: 'v1', trained: '2026-06-18', metric: '16 classes', note: 'NEW — false_* detections → COUNTERFEIT verdict (real fake detection)' },
+  { file: 'security_best.pt', role: 'Security features (legacy)', out: 'watermark · thread · serial · concealed value · see-through',
+    version: 'v1', trained: 'original', metric: '—', note: 'Supplemented by securitycf' },
+  { file: 'counterfeit_best.pt', role: 'Security feature detector', out: 'UV-thread · concealed · thread · serial · value',
+    version: 'v1', trained: 'original', metric: '—', note: 'Feature detector (not real/fake)' },
+  { file: 'ovi.pt', role: 'Optically Variable Ink', out: 'present / absent / suspicious',
+    version: 'v1', trained: 'original', metric: '—', note: 'High-denomination tilt feature' },
+  { file: 'ovd.pt', role: 'Optically Variable Device', out: 'foil region polygons',
+    version: 'v1', trained: 'original', metric: '—', note: 'High-denomination tilt feature' },
+  { file: 'evp.pt', role: 'Enhanced Value Panel', out: '500 / 1000 EVP + false EVP',
+    version: 'v1', trained: 'original', metric: '—', note: 'Original forgery marker' }
 ]
 
 export default {
@@ -99,4 +118,9 @@ export default {
 .mfile { font-family: monospace; color: #ffa31a; font-size: .9rem; }
 .mrole { font-weight: 600; margin: .3rem 0; font-size: .92rem; }
 .mout { font-size: .8rem; color: var(--text-muted); }
+.ver { background: #1f9d57; color: #fff; border-radius: 6px; padding: 1px 7px; font-size: .72rem; font-weight: 700; margin-left: 4px; }
+.mmeta { font-size: .76rem; color: var(--text-muted); margin-top: .45rem; }
+.mnote { font-size: .78rem; color: #cbd5e1; margin-top: .35rem; font-style: italic; }
+.docnote { font-size: .82rem; color: var(--text-muted); margin: 0 0 1rem; line-height: 1.6; }
+.docnote code { background: rgba(0,0,0,.25); padding: 1px 6px; border-radius: 5px; color: #ffa31a; }
 </style>
