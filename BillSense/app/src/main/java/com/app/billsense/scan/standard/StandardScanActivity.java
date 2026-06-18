@@ -92,7 +92,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // features; ₱500/₱1000 add 3 more. We tag each as detected (✓) or not-yet (○).
     private static final String[] BASE_FEATURES = {
             "value", "serial_number", "security_thread", "concealed_value", "watermark",
-            "value_watermark", "see_through_mark", "uv_thread", "symbol_of_nature"
+            "value_watermark", "see_through_mark", "uv_thread", "symbol_of_nature", "shadow_thread"
     };
     private static final String[] HIGH_DENOM_EXTRA = {
             "optically_variable_ink", "optically_variable_thread", "ovd", "enhanced_value_panel"
@@ -509,6 +509,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             case "value_watermark": return "Value Watermark";
             case "uv_thread": return "UV Thread";
             case "symbol_of_nature": return "Symbol of Nature";
+            case "shadow_thread": return "Shadow Thread";
             default: return key.replace("_", " ");
         }
     }
