@@ -88,6 +88,15 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     private Uri capturedImageUri; // Will hold the URI of the single captured image
     private boolean areInfoCardsVisible = true; // show the live-analysis panel by default
 
+    // Full security-feature checklist (server feature keys). Every note has the 6 base
+    // features; ₱500/₱1000 add 3 more. We tag each as detected (✓) or not-yet (○).
+    private static final String[] BASE_FEATURES = {
+            "value", "serial_number", "security_thread", "concealed_value", "watermark", "see_through_mark"
+    };
+    private static final String[] HIGH_DENOM_EXTRA = {
+            "optically_variable_ink", "ovd", "enhanced_value_panel"
+    };
+
     // --- Cold-start handling: warm the server + auto-retry the WebSocket ---
     private int wsRetryCount = 0;
     private static final int MAX_WS_RETRIES = 6;
@@ -423,12 +432,18 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             }
         }
 
-        // --- Update Bill Info Card ---
-        if (response.denomination != null) {
+        // --- Update Bill Info Card + per-bill overview line ---
+        boolean identified = response.denomination != null && !"UNKNOWN".equalsIgnoreCase(response.denomination);
+        if (identified) {
             binding.currencyInfoText.setText("Currency: PHP"); // Assuming PHP for now
             binding.denominationInfoText.setText("Denomination: " + response.denomination);
+            boolean hi = Boolean.TRUE.equals(response.isHighDenomination)
+                    || "500".equals(response.denomination) || "1000".equals(response.denomination);
+            binding.overviewBillText.setText("₱" + response.denomination + " detected — verifying "
+                    + (hi ? 9 : 6) + " security features. Hold steady for a full read.");
         } else {
             binding.denominationInfoText.setText("Denomination: N/A");
+            binding.overviewBillText.setText("Point the bill at the camera to begin.");
         }
 
         // Update feature count on the Bill Info card
@@ -438,20 +453,23 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             binding.serialNoText.setText("Features: N/A");
         }
 
-        // --- Update Feature Detection Card ---
-        binding.featuresListLayout.removeAllViews(); // Clear old features
-        if (response.featuresDetected != null && !response.featuresDetected.isEmpty()) {
-            binding.featureDetectionCard.setVisibility(View.VISIBLE);
-            for (String feature : response.featuresDetected) {
-                TextView featureView = new TextView(this);
-                // Prepend a checkmark for a better visual cue
-                featureView.setText("✓ " + feature.replace("_", " ").toUpperCase());
-                featureView.setTextColor(Color.BLACK);
-                featureView.setTextSize(11f);
-                binding.featuresListLayout.addView(featureView);
-            }
-        } else {
-            binding.featureDetectionCard.setVisibility(View.GONE);
+        // --- Update Feature Detection Card: FULL security checklist (detected ✓ / not-yet ○) ---
+        binding.featuresListLayout.removeAllViews();
+        binding.featureDetectionCard.setVisibility(View.VISIBLE);
+        java.util.Set<String> detected = new java.util.HashSet<>();
+        if (response.featuresDetected != null) detected.addAll(response.featuresDetected);
+        boolean highDenom = Boolean.TRUE.equals(response.isHighDenomination)
+                || "500".equals(response.denomination) || "1000".equals(response.denomination);
+        java.util.List<String> expected = new java.util.ArrayList<>(java.util.Arrays.asList(BASE_FEATURES));
+        if (highDenom) expected.addAll(java.util.Arrays.asList(HIGH_DENOM_EXTRA));
+        for (String feature : expected) {
+            boolean found = detected.contains(feature);
+            TextView featureView = new TextView(this);
+            featureView.setText((found ? "✓ " : "○ ") + prettyFeature(feature));
+            featureView.setTextColor(found ? Color.parseColor("#1B8A3A") : Color.parseColor("#9AA0A6"));
+            featureView.setTextSize(11f);
+            featureView.setPadding(0, 3, 0, 3);
+            binding.featuresListLayout.addView(featureView);
         }
 
 
@@ -471,6 +489,22 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             }
         } else {
             binding.qualityMetricsCard.setVisibility(View.GONE);
+        }
+    }
+
+    /** Human-readable label for a server security-feature key. */
+    private String prettyFeature(String key) {
+        switch (key) {
+            case "see_through_mark": return "See-through Mark";
+            case "optically_variable_ink": return "Optically Variable Ink (OVI)";
+            case "ovd": return "Optically Variable Device (OVD)";
+            case "enhanced_value_panel": return "Enhanced Value Panel";
+            case "concealed_value": return "Concealed Value";
+            case "security_thread": return "Security Thread";
+            case "serial_number": return "Serial Number";
+            case "value": return "Value Numeral";
+            case "watermark": return "Watermark";
+            default: return key.replace("_", " ");
         }
     }
 

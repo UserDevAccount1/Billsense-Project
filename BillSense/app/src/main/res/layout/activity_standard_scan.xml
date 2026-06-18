@@ -119,6 +119,46 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
+                    <!-- Scan Overview Card (shown before & during detection) -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/overviewCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        app:cardBackgroundColor="#E61A237E"
+                        app:cardCornerRadius="8dp"
+                        app:contentPadding="8dp">
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Scan Overview"
+                                android:textColor="@android:color/white"
+                                android:textSize="12sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/overviewText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Authenticity check: identifies the denomination, verifies its security features, and gives a Genuine / Likely Genuine score. Place the whole bill in frame in good light — detection runs automatically."
+                                android:textColor="#E8EAF6"
+                                android:textSize="10sp" />
+                            <TextView
+                                android:id="@+id/overviewBillText"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="Point the bill at the camera to begin."
+                                android:textColor="#FFD54F"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
                     <!-- Fee the Bill Card -->
                     <com.google.android.material.card.MaterialCardView
                         android:id="@+id/feelBillCard"

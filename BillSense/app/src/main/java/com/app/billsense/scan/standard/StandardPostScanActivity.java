@@ -293,14 +293,19 @@ public class StandardPostScanActivity extends AppCompatActivity {
                 auth != null ? auth.getFeatureGeometry() : null;
         if (sf != null) {
             binding.securityFeaturesCard.setVisibility(View.VISIBLE);
+            // High-denomination notes (₱500/₱1000) carry 3 extra features (OVI/OVD/EVP).
+            // Only list those for high-denom so low notes don't show them as "missing".
+            boolean highDenom = "500".equals(denom) || "1000".equals(denom);
             addFeatureRow("Watermark", sf.hasWatermark(), geom, "watermark");
             addFeatureRow("Security Thread", sf.hasSecurityThread(), geom, "security_thread");
             addFeatureRow("Serial Number", sf.hasSerialNumber(), geom, "serial_number");
             addFeatureRow("See-through Mark", sf.hasSeeThroughMark(), geom, "see_through_mark");
             addFeatureRow("Concealed Value", sf.hasConcealedValue(), geom, "concealed_value");
-            addFeatureRow("OVD Patch", sf.hasOvd(), geom, "ovd");
-            addFeatureRow("Enhanced Value Panel", sf.hasEnhancedValuePanel(), geom, "enhanced_value_panel");
-            addFeatureRow("Optically Variable Ink", sf.hasOpticallyVariableInk(), geom, "optically_variable_ink");
+            if (highDenom) {
+                addFeatureRow("OVD Patch", sf.hasOvd(), geom, "ovd");
+                addFeatureRow("Enhanced Value Panel", sf.hasEnhancedValuePanel(), geom, "enhanced_value_panel");
+                addFeatureRow("Optically Variable Ink", sf.hasOpticallyVariableInk(), geom, "optically_variable_ink");
+            }
         } else {
             binding.securityFeaturesCard.setVisibility(View.GONE);
         }
