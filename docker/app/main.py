@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.10")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.11")
 
 # CORS
 app.add_middleware(
@@ -340,35 +340,53 @@ def create_numbered_annotated_image(image: np.ndarray, security_detections: List
                     'original_label': label
                 })
         
-        # Draw numbers on image
-        for detection in numbered_detections:
+        # Human-readable tags for each detected security feature, drawn ON the bill.
+        DISPLAY_LABELS = {
+            'value': 'Value', 'serial_number': 'Serial No.', 'security_thread': 'Security Thread',
+            'concealed_value': 'Concealed Value', 'watermark': 'Watermark', 'see_through_mark': 'See-through',
+            'optically_variable_ink': 'OVI', 'ovd': 'OVD', 'enhanced_value_panel': 'Value Panel',
+            'false_enhanced_value_panel': 'FALSE PANEL',
+        }
+        # Adaptive sizing so tags stay readable across image resolutions.
+        h, w = annotated_img.shape[:2]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = max(0.5, min(1.1, w / 1400.0))
+        thick = max(1, int(round(font_scale * 2)))
+        box_thick = max(2, int(round(font_scale * 3)))
+
+        # De-duplicate by feature (keep the highest-confidence box per feature)
+        best_by_feature = {}
+        for d in numbered_detections:
+            f = d.get('feature')
+            if f and (f not in best_by_feature or d.get('confidence', 0) > best_by_feature[f].get('confidence', 0)):
+                best_by_feature[f] = d
+
+        for detection in best_by_feature.values():
             bbox = detection.get('bbox', [])
-            if len(bbox) == 4:
-                x1, y1, x2, y2 = map(int, bbox)
-                
-                # Calculate center point for the number
-                center_x = (x1 + x2) // 2
-                center_y = (y1 + y2) // 2
-                
-                # Draw circle background
-                circle_radius = 30
-                cv2.circle(annotated_img, (center_x, center_y), circle_radius, (0, 0, 0), -1)
-                cv2.circle(annotated_img, (center_x, center_y), circle_radius, (255, 255, 255), 3)
-                
-                # Draw number
-                number_text = detection.get('number', '')
-                font_scale = 1.2
-                font_thickness = 3
-                text_size = cv2.getTextSize(number_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
-                text_x = center_x - text_size[0] // 2
-                text_y = center_y + text_size[1] // 2
-                
-                cv2.putText(annotated_img, number_text, (text_x, text_y), 
-                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness)
-                
-                print(f"  🔢 Number {number_text} placed at ({center_x}, {center_y}) for {detection.get('feature', '')}")
-        
-        print(f"✅ Numbered annotation completed: {len(numbered_detections)} features numbered")
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = map(int, bbox)
+            feat = detection.get('feature', '')
+            is_fake = feat == 'false_enhanced_value_panel'
+            color = (0, 0, 255) if is_fake else (40, 175, 60)  # BGR: red = forgery marker, green = genuine
+            num = detection.get('number', '')
+            name = DISPLAY_LABELS.get(feat, feat.replace('_', ' ').title())
+            label = (f"{num}. {name}" if num else name)
+
+            # Bounding box around the feature
+            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color, box_thick)
+
+            # Filled tag with the feature name, placed just above the box (or below if no room)
+            (tw, th), base = cv2.getTextSize(label, font, font_scale, thick)
+            pad = max(4, int(font_scale * 6))
+            ty = y1 - pad if (y1 - th - 2 * pad) > 0 else y2 + th + 2 * pad
+            tag_top = ty - th - pad
+            tag_bottom = ty + base
+            cv2.rectangle(annotated_img, (x1, tag_top), (min(x1 + tw + 2 * pad, w - 1), tag_bottom), color, -1)
+            cv2.putText(annotated_img, label, (x1 + pad, ty), font, font_scale, (255, 255, 255), thick, cv2.LINE_AA)
+            print(f"  🏷️ Tagged '{label}' at ({x1},{y1})-({x2},{y2})")
+
+        print(f"✅ Tagged annotation completed: {len(best_by_feature)} security features labelled on the bill")
         return annotated_img
         
     except Exception as e:
@@ -427,7 +445,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.10',
+            'logic_version': '17.11',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -2309,7 +2327,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.10",
+            "logic_version": "17.11",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2399,7 +2417,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.10",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.11",
     }
     try:
         from billy_rag import billy_rag
@@ -2730,7 +2748,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.10",
+                "logic_version": "17.11",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2775,7 +2793,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.10",
+        "api_version": "17.11",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [
