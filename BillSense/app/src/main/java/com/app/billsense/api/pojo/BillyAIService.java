@@ -496,11 +496,15 @@ public class BillyAIService {
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                    if (response.isSuccessful() && response.body() != null) {
+                    String bodyStr = response.body() != null ? response.body().string() : "";
+                    Log.d(TAG, "Billy HTTP " + response.code() + " len=" + bodyStr.length()
+                            + " body[0:160]=" + (bodyStr.length() > 160 ? bodyStr.substring(0, 160) : bodyStr));
+                    if (response.isSuccessful() && !bodyStr.isEmpty()) {
                         try {
-                            JSONObject jr = new JSONObject(response.body().string());
+                            JSONObject jr = new JSONObject(bodyStr);
                             String answer = jr.optString("answer", "");
                             if (answer.isEmpty()) {
+                                Log.w(TAG, "Billy: empty answer field — falling back");
                                 callback.onSuccess(offlineAnswer(userMessage));
                                 return;
                             }
@@ -517,9 +521,11 @@ public class BillyAIService {
                             }
                             callback.onSuccess(answer);
                         } catch (Exception e) {
+                            Log.w(TAG, "Billy: parse error — falling back: " + e.getMessage());
                             callback.onSuccess(offlineAnswer(userMessage));
                         }
                     } else {
+                        Log.w(TAG, "Billy: non-200/empty (code=" + response.code() + ") — falling back");
                         callback.onSuccess(offlineAnswer(userMessage));
                     }
                 }
