@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.8")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.9")
 
 # CORS
 app.add_middleware(
@@ -427,7 +427,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.8',
+            'logic_version': '17.9',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -2309,7 +2309,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.8",
+            "logic_version": "17.9",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2361,6 +2361,59 @@ BILLY_SYSTEM_PROMPT = (
 )
 
 
+_BILLY_DB_GET = "https://billsense.dev-environment.site/api/db/get"
+_billy_cfg_cache = {"data": {}, "ts": 0.0}
+
+def _get_billy_config():
+    """Live admin config from RTDB (billy_analytics/config) via the cPanel proxy, cached 60s.
+    Shape: {systemPrompt?: str, model?: str, knowledge?: [{title, content, keywords?}]}."""
+    if (time.time() - _billy_cfg_cache["ts"]) < 60 and _billy_cfg_cache["data"]:
+        return _billy_cfg_cache["data"]
+    cfg = {}
+    try:
+        import urllib.request as _ur
+        body = json.dumps({"path": "billy_analytics/config"}).encode("utf-8")
+        req = _ur.Request(_BILLY_DB_GET, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        with _ur.urlopen(req, timeout=10) as resp:
+            j = json.loads(resp.read().decode("utf-8"))
+        cfg = (j.get("data") if isinstance(j, dict) else None)
+        if cfg is None and isinstance(j, dict):
+            cfg = j
+        if not isinstance(cfg, dict):
+            cfg = {}
+    except Exception as e:
+        print("Billy config fetch failed: %s" % e)
+    _billy_cfg_cache["data"] = cfg
+    _billy_cfg_cache["ts"] = time.time()
+    return cfg
+
+
+@app.get("/api/billy/health")
+async def billy_health():
+    """Infrastructure summary for the admin Billy page (documented + live status)."""
+    info = {
+        "endpoint": "/api/billy/chat",
+        "model_default": BILLY_MODEL,
+        "embedding_model": "sentence-transformers all-MiniLM-L6-v2",
+        "vector_db": "FAISS (IndexFlatIP, cosine)",
+        "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
+        "guardrails": ["No code generation", "No off-topic", "Educational-only law",
+                       "No counterfeiting playbook", "Never invent facts"],
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.9",
+    }
+    try:
+        from billy_rag import billy_rag
+        info["chunks"] = len(billy_rag.chunks)
+        info["faiss_ready"] = bool(getattr(billy_rag, "_ready", False))
+    except Exception:
+        pass
+    cfg = _get_billy_config()
+    info["model_active"] = cfg.get("model") or BILLY_MODEL
+    info["prompt_overridden"] = bool(cfg.get("systemPrompt"))
+    info["knowledge_notes"] = len(cfg.get("knowledge") or []) if isinstance(cfg.get("knowledge"), list) else 0
+    return JSONResponse(info)
+
+
 @app.post("/api/billy/chat")
 async def billy_chat(request: Request):
     """RAG-grounded Billy chat: FAISS retrieval over BillSense docs + Gemini 3.1, with guardrails."""
@@ -2385,7 +2438,24 @@ async def billy_chat(request: Request):
     for h in hits:
         if h["source"] not in sources:
             sources.append(h["source"])
+    # Live admin config (prompt override / model / extra knowledge notes from the dashboard)
+    cfg = _get_billy_config()
+    notes = cfg.get("knowledge") if isinstance(cfg.get("knowledge"), list) else []
+    note_lines = []
+    ql = message.lower()
+    for n in notes:
+        if not isinstance(n, dict) or not n.get("content"):
+            continue
+        kw = str(n.get("keywords", "")).strip()
+        match = (not kw) or any(k.strip().lower() in ql for k in kw.split(",") if k.strip())
+        if match:
+            note_lines.append("[admin note: %s] %s" % (n.get("title", ""), n.get("content", "")))
+        if len(note_lines) >= 5:
+            break
+
     parts = []
+    if note_lines:
+        parts.append("ADMIN KNOWLEDGE NOTES (authoritative — prefer these):\n" + "\n".join(note_lines))
     if context:
         parts.append("CONTEXT (retrieved from BillSense documents — use only what is relevant):\n" + context)
     if scan_context:
@@ -2394,8 +2464,8 @@ async def billy_chat(request: Request):
     user_message = "\n\n".join(parts)
 
     payload = {
-        "model": BILLY_MODEL,
-        "systemPrompt": BILLY_SYSTEM_PROMPT,
+        "model": cfg.get("model") or BILLY_MODEL,
+        "systemPrompt": cfg.get("systemPrompt") or BILLY_SYSTEM_PROMPT,
         "userMessage": user_message,
         "history": history,
         "generationConfig": {"temperature": 0.5, "maxOutputTokens": 1024},
@@ -2660,7 +2730,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.8",
+                "logic_version": "17.9",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2705,7 +2775,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.8",
+        "api_version": "17.9",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [

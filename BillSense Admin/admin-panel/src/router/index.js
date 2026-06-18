@@ -5,6 +5,7 @@ import GitNexus from '../views/GitNexus.vue'
 import ApkManagement from '../views/ApkManagement.vue'
 import AppTesting from '../views/AppTesting.vue'
 import Billy from '../views/Billy.vue'
+import BillyBrain from '../views/BillyBrain.vue'
 import Thesis from '../views/Thesis.vue'
 import SupportTickets from '../views/SupportTickets.vue'
 import Notifications from '../views/Notifications.vue'
@@ -22,6 +23,7 @@ const routes = [
   { path: '/login', name: 'Login', component: Login, meta: { public: true } },
   { path: '/', name: 'Dashboard', component: Dashboard },
   { path: '/billy', name: 'Billy', component: Billy },
+  { path: '/billy-brain', name: 'BillyBrain', component: BillyBrain },
   { path: '/scan-reports', name: 'ScanReports', component: ScanReports },
   { path: '/users', name: 'Users', component: Users },
   { path: '/ml-models', name: 'MLModels', component: MLModels },

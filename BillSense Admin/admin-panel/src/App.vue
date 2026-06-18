@@ -30,6 +30,12 @@
             </router-link>
           </li>
           <li>
+            <router-link to="/billy-brain" @click="mobileMenuOpen = false">
+              <span class="material-icons">psychology</span>
+              <span class="nav-text">Billy Brain</span>
+            </router-link>
+          </li>
+          <li>
             <router-link to="/scan-reports" @click="mobileMenuOpen = false">
               <span class="material-icons">qr_code_scanner</span>
               <span class="nav-text">Scan Reports</span>
