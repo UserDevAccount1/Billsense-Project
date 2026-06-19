@@ -45,6 +45,21 @@ public class TFLiteInference {
             "UV-thread", "value", "watermark"
     };
 
+    // Denomination model (detect, 6 classes — index order from denomination2.pt).
+    public static final String[] DENOMINATION_CLASSES = {
+            "20", "50", "100", "200", "500", "1000"
+    };
+
+    // securitycf model (detect, 16 classes — exact index order from securitycf.pt):
+    // 8 genuine security features + 8 false_* forgery markers.
+    // 'bill' / 'false_bill' are noisy whole-note guesses and are NOT used as features/condemners.
+    public static final String[] SECURITYCF_CLASSES = {
+            "bill", "watermark", "see_through_mark", "shadow_thread", "security_thread",
+            "concealed_value", "enhanced_value_panel", "ovi",
+            "false_bill", "false_watermark", "false_see_through_mark", "false_shadow_thread",
+            "false_security_thread", "false_concealed_value", "false_enhanced_value_panel", "false_ovi"
+    };
+
     private Interpreter interpreter;
     private final String modelType;
     private final String[] classNames;
@@ -81,10 +96,12 @@ public class TFLiteInference {
      */
     public TFLiteInference(@NonNull String modelType) {
         this.modelType = modelType;
-        if ("security".equals(modelType) || "uv".equals(modelType)) {
-            this.classNames = SECURITY_CLASSES;
-        } else {
-            this.classNames = COUNTERFEIT_CLASSES;
+        switch (modelType) {
+            case "denomination": this.classNames = DENOMINATION_CLASSES; break;
+            case "securitycf":   this.classNames = SECURITYCF_CLASSES; break;
+            case "security":
+            case "uv":           this.classNames = SECURITY_CLASSES; break;
+            default:             this.classNames = COUNTERFEIT_CLASSES; break;
         }
     }
 
@@ -413,6 +430,131 @@ public class TFLiteInference {
                 : String.join(", ", featureNames);
 
         return response;
+    }
+
+    /**
+     * Builds the offline scan result from denomination + securitycf detections,
+     * mirroring the SERVER's evaluate_counterfeit (v17.17 corroboration rule + v17.19):
+     *   - denomination = highest-confidence denom detection;
+     *   - genuine features populate the checklist;
+     *   - a false_* marker only condemns at conf >= 0.75 AND when its genuine
+     *     counterpart is NOT also detected; COUNTERFEIT requires >= 2 such markers
+     *     AND fewer than 2 hard security features (so one noisy marker never condemns);
+     *   - otherwise GENUINE (>=50% coverage) / LIKELY GENUINE.
+     */
+    @NonNull
+    public static StandardScanResponse buildOfflineResponse(
+            @NonNull List<Detection> denomDets, @NonNull List<Detection> scfDets) {
+        StandardScanResponse r = new StandardScanResponse();
+        r.scanId = UUID.randomUUID().toString();
+        r.timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss",
+                java.util.Locale.US).format(new java.util.Date());
+        r.analysisType = "on_device_scan";
+        r.status = "completed";
+        r.processingMode = "on_device";
+        r.modelInfo = "TFLite denomination2 + securitycf";
+        r.logicVersion = "offline-17.19";
+
+        // Denomination: highest-confidence detection
+        String denom = "UNKNOWN";
+        float denomConf = 0f;
+        for (Detection d : denomDets) {
+            if (d.confidence > denomConf) { denomConf = d.confidence; denom = d.className; }
+        }
+        r.denomination = denom;
+        boolean highDenom = "500".equals(denom) || "1000".equals(denom);
+        r.isHighDenomination = highDenom;
+
+        // securitycf: collect genuine features + best false-marker confidences
+        StandardScanResponse.SecurityFeatures f = new StandardScanResponse.SecurityFeatures();
+        java.util.Set<String> genuine = new java.util.HashSet<>();
+        java.util.Map<String, Float> falseConf = new java.util.HashMap<>();
+        for (Detection d : scfDets) {
+            String c = d.className;
+            if (c.startsWith("false_")) {
+                if (!c.equals("false_bill")) {
+                    Float prev = falseConf.get(c);
+                    if (prev == null || d.confidence > prev) falseConf.put(c, d.confidence);
+                }
+            } else if (!c.equals("bill")) {
+                genuine.add(c);
+                switch (c) {
+                    case "watermark": f.watermark = true; break;
+                    case "see_through_mark": f.seeThroughMark = true; break;
+                    case "security_thread":
+                    case "shadow_thread": f.securityThread = true; break; // no dedicated shadow field
+                    case "concealed_value": f.concealedValue = true; break;
+                    case "enhanced_value_panel": f.enhancedValuePanel = true; break;
+                    case "ovi": f.opticallyVariableInk = true; break;
+                }
+            }
+        }
+        r.securityFeatures = f;
+
+        // false_X only condemns if genuine X is absent
+        java.util.Map<String, String> genuineOf = new java.util.HashMap<>();
+        genuineOf.put("false_watermark", "watermark");
+        genuineOf.put("false_see_through_mark", "see_through_mark");
+        genuineOf.put("false_shadow_thread", "shadow_thread");
+        genuineOf.put("false_security_thread", "security_thread");
+        genuineOf.put("false_concealed_value", "concealed_value");
+        genuineOf.put("false_enhanced_value_panel", "enhanced_value_panel");
+        genuineOf.put("false_ovi", "ovi");
+
+        java.util.List<String> condemning = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, Float> e : falseConf.entrySet()) {
+            if (e.getValue() >= 0.75f && !genuine.contains(genuineOf.get(e.getKey()))) {
+                condemning.add(e.getKey());
+            }
+        }
+
+        String[] hard = {"watermark", "see_through_mark", "security_thread",
+                "concealed_value", "shadow_thread", "enhanced_value_panel", "ovi"};
+        int hardGenuine = 0;
+        for (String h : hard) if (genuine.contains(h)) hardGenuine++;
+
+        int detected = genuine.size();
+        int total = highDenom ? 9 : 6;
+        double coverage = total > 0 ? Math.min(100.0, (detected * 100.0) / total) : 0;
+
+        StandardScanResponse.Authenticity a = new StandardScanResponse.Authenticity();
+        a.reasons = new ArrayList<>();
+        boolean corroborated = condemning.size() >= 2 && hardGenuine < 2;
+        if ("UNKNOWN".equals(denom)) {
+            a.isGenuine = false; a.status = "UNKNOWN";
+            a.reasons.add("Could not identify the denomination. Re-scan the full note in good lighting.");
+        } else if (corroborated) {
+            a.isGenuine = false; a.status = "COUNTERFEIT";
+            StringBuilder sb = new StringBuilder();
+            for (String m : condemning) sb.append(m.replace("false_", "").replace("_", " ")).append(", ");
+            a.reasons.add("Multiple counterfeit markers (" + sb.toString().replaceAll(", $", "")
+                    + ") with no genuine security features verified.");
+        } else if (coverage >= 50.0) {
+            a.isGenuine = true; a.status = "GENUINE";
+            a.reasons.add(detected + "/" + total + " security features verified ("
+                    + Math.round(coverage) + "% coverage) — consistent with a genuine note.");
+        } else {
+            a.isGenuine = true; a.status = "LIKELY GENUINE";
+            a.reasons.add("Only " + detected + "/" + total + " features visible offline — "
+                    + "watermark / see-through / OVI need backlight or tilt.");
+        }
+        a.confidence = String.format(java.util.Locale.US, "%.1f%%", Math.max(denomConf, 0f) * 100);
+        a.coveragePercentage = coverage;
+        a.detectedFeaturesCount = detected;
+        a.totalExpectedFeatures = total;
+        a.denominationType = highDenom ? "HIGH_DENOMINATION" : "LOW_DENOMINATION";
+        a.hasFalseEvp = falseConf.containsKey("false_enhanced_value_panel");
+        a.authenticityScore = (int) Math.round(coverage);
+        r.authenticity = a;
+
+        r.detectedFeaturesCount = detected;
+        r.totalExpectedFeatures = total;
+        r.coveragePercentage = coverage;
+
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (String g : genuine) names.add(g.replace("_", " "));
+        r.featureSummary = names.isEmpty() ? "No features detected" : String.join(", ", names);
+        return r;
     }
 
     /**

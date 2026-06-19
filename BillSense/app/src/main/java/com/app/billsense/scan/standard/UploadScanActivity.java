@@ -59,8 +59,8 @@ public class UploadScanActivity extends AppCompatActivity {
     private ActivityUploadScanBinding binding;
     private CurrencyApiService apiService;
     private TFLiteModelManager modelManager;
-    private TFLiteInference counterfeitInference;
-    private TFLiteInference securityInference;
+    private TFLiteInference securitycfInference;
+    private TFLiteInference denominationInference;
     private FBUtils fbUtils;
     private String userId;
     private boolean onDeviceReady = false;
@@ -146,15 +146,15 @@ public class UploadScanActivity extends AppCompatActivity {
             public void onAllModelsReady(Map<String, File> modelFiles) {
                 Log.d(TAG, "All models ready. Count: " + modelFiles.size());
                 // Load the inference engines
-                if (modelFiles.containsKey("counterfeit")) {
-                    counterfeitInference = new TFLiteInference("counterfeit");
-                    counterfeitInference.loadModel(modelFiles.get("counterfeit"));
+                if (modelFiles.containsKey("securitycf")) {
+                    securitycfInference = new TFLiteInference("securitycf");
+                    securitycfInference.loadModel(modelFiles.get("securitycf"));
                 }
-                if (modelFiles.containsKey("security")) {
-                    securityInference = new TFLiteInference("security");
-                    securityInference.loadModel(modelFiles.get("security"));
+                if (modelFiles.containsKey("denomination")) {
+                    denominationInference = new TFLiteInference("denomination");
+                    denominationInference.loadModel(modelFiles.get("denomination"));
                 }
-                onDeviceReady = counterfeitInference != null && counterfeitInference.isLoaded();
+                onDeviceReady = securitycfInference != null && securitycfInference.isLoaded();
                 Log.d(TAG, "On-device inference ready: " + onDeviceReady);
             }
 
@@ -258,30 +258,30 @@ public class UploadScanActivity extends AppCompatActivity {
      */
     private void tryLoadCachedModels() {
         File modelsDir = new File(getFilesDir(), "tflite_models");
-        File counterfeitFile = new File(modelsDir, "counterfeit_best_float32.tflite");
-        File securityFile = new File(modelsDir, "security_best_int8.tflite");
+        File securitycfFile = new File(modelsDir, "securitycf_float32.tflite");
+        File denominationFile = new File(modelsDir, "denomination2_float32.tflite");
 
-        if (counterfeitFile.exists() && counterfeitFile.length() > 1_000_000) {
-            if (counterfeitInference == null) {
-                counterfeitInference = new TFLiteInference("counterfeit");
+        if (securitycfFile.exists() && securitycfFile.length() > 1_000_000) {
+            if (securitycfInference == null) {
+                securitycfInference = new TFLiteInference("securitycf");
             }
-            if (!counterfeitInference.isLoaded()) {
-                counterfeitInference.loadModel(counterfeitFile);
+            if (!securitycfInference.isLoaded()) {
+                securitycfInference.loadModel(securitycfFile);
             }
-            Log.d(TAG, "Counterfeit model loaded from cache: " + counterfeitInference.isLoaded());
+            Log.d(TAG, "securitycf model loaded from cache: " + securitycfInference.isLoaded());
         }
 
-        if (securityFile.exists() && securityFile.length() > 1_000_000) {
-            if (securityInference == null) {
-                securityInference = new TFLiteInference("security");
+        if (denominationFile.exists() && denominationFile.length() > 1_000_000) {
+            if (denominationInference == null) {
+                denominationInference = new TFLiteInference("denomination");
             }
-            if (!securityInference.isLoaded()) {
-                securityInference.loadModel(securityFile);
+            if (!denominationInference.isLoaded()) {
+                denominationInference.loadModel(denominationFile);
             }
-            Log.d(TAG, "Security model loaded from cache: " + securityInference.isLoaded());
+            Log.d(TAG, "denomination model loaded from cache: " + denominationInference.isLoaded());
         }
 
-        onDeviceReady = counterfeitInference != null && counterfeitInference.isLoaded();
+        onDeviceReady = securitycfInference != null && securitycfInference.isLoaded();
         Log.d(TAG, "On-device ready after cache load: " + onDeviceReady);
     }
 
@@ -306,19 +306,14 @@ public class UploadScanActivity extends AppCompatActivity {
 
                 // Run counterfeit model (primary)
                 StandardScanResponse response = null;
-                if (counterfeitInference != null && counterfeitInference.isLoaded()) {
-                    List<TFLiteInference.Detection> detections = counterfeitInference.runInference(bitmap);
-
-                    // If security model is also loaded, merge its detections
-                    if (securityInference != null && securityInference.isLoaded()) {
-                        List<TFLiteInference.Detection> secDetections = securityInference.runInference(bitmap);
-                        detections.addAll(secDetections);
+                if (securitycfInference != null && securitycfInference.isLoaded()) {
+                    List<TFLiteInference.Detection> scfDets = securitycfInference.runInference(bitmap);
+                    List<TFLiteInference.Detection> denomDets = new java.util.ArrayList<>();
+                    if (denominationInference != null && denominationInference.isLoaded()) {
+                        denomDets = denominationInference.runInference(bitmap);
                     }
-
-                    response = counterfeitInference.toStandardScanResponse(detections);
-                } else if (securityInference != null && securityInference.isLoaded()) {
-                    List<TFLiteInference.Detection> detections = securityInference.runInference(bitmap);
-                    response = securityInference.toStandardScanResponse(detections);
+                    // Combined verdict mirrors the server (corroboration rule, v17.17/v17.19)
+                    response = TFLiteInference.buildOfflineResponse(denomDets, scfDets);
                 }
 
                 bitmap.recycle();
@@ -533,25 +528,50 @@ public class UploadScanActivity extends AppCompatActivity {
         // Also save full scan result for the View Report screen
         saveFullScanResult(scanId, result);
 
-        // Try Firebase REST (best-effort, may fail offline)
+        // Save to RTDB via the SA-authed cPanel proxy. The app's custom login can't
+        // satisfy the auth!=null RTDB write rule, so a direct write is rejected. The
+        // proxy (service account) writes into 'Standard Scan' — the node the admin
+        // Scan Reports page reads — in the camelCase shape it expects, attributed to
+        // the real user. Best-effort: local cache already holds it for offline display.
+        final boolean genuine = result.getAuthenticity() != null && result.getAuthenticity().isGenuine();
+        final int detected = result.detectedFeaturesCount;
+        final int total = result.totalExpectedFeatures;
+        final boolean highDenom = result.isHighDenomination;
+        final String fStatus = status, fConf = confidence, fDenom = denomination,
+                fFeatures = features, fTs = timestamp, fId = scanId;
         new Thread(() -> {
             try {
+                String record = "{" +
+                        "\"scanId\":\"" + fId + "\"," +
+                        "\"userId\":\"" + userId + "\"," +
+                        "\"type\":\"Standard\"," +
+                        "\"timestamp\":\"" + fTs + "\"," +
+                        "\"denomination\":\"" + fDenom + "\"," +
+                        "\"authenticity\":\"" + fStatus + "\"," +
+                        "\"isGenuine\":" + genuine + "," +
+                        "\"confidence\":\"" + fConf + "\"," +
+                        "\"coveragePercentage\":" + coverage + "," +
+                        "\"detectedFeaturesCount\":" + detected + "," +
+                        "\"totalExpectedFeatures\":" + total + "," +
+                        "\"featuresDetected\":\"" + fFeatures.replace("\"", "") + "\"," +
+                        "\"isHighDenomination\":" + highDenom + "," +
+                        "\"annotatedImageUrl\":\"\"," +
+                        "\"logicVersion\":\"offline-17.19\"," +
+                        "\"processingMode\":\"on_device\"" +
+                        "}";
+                String reqBody = "{\"path\":\"Standard Scan/" + userId + "/" + fId + "\",\"data\":" + record + "}";
                 okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
-                        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build();
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url("https://billsense.dev-environment.site/api/db/patch")
+                        .post(okhttp3.RequestBody.create(reqBody, okhttp3.MediaType.parse("application/json")))
                         .build();
-                String url = "https://bill-sense-aec6b-default-rtdb.firebaseio.com/Scan%20Report/"
-                        + userId + "/" + scanId + ".json";
-                okhttp3.RequestBody body = okhttp3.RequestBody.create(json,
-                        okhttp3.MediaType.parse("application/json"));
-                okhttp3.Request request = new okhttp3.Request.Builder().url(url).put(body).build();
                 okhttp3.Response response = client.newCall(request).execute();
-                Log.d(TAG, "On-device scan report saved to Firebase: " + response.code());
+                Log.d(TAG, "On-device scan saved via proxy: " + response.code());
                 response.close();
-
-                // Mark as synced
-                markLocalReportSynced(scanId);
+                markLocalReportSynced(fId);
             } catch (Exception e) {
-                Log.d(TAG, "Firebase save failed (will sync later): " + e.getMessage());
+                Log.d(TAG, "Proxy save failed (kept local, will sync later): " + e.getMessage());
             }
         }).start();
     }
@@ -705,11 +725,11 @@ public class UploadScanActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (counterfeitInference != null) {
-            counterfeitInference.close();
+        if (securitycfInference != null) {
+            securitycfInference.close();
         }
-        if (securityInference != null) {
-            securityInference.close();
+        if (denominationInference != null) {
+            denominationInference.close();
         }
     }
 }
