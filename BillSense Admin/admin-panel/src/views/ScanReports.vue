@@ -16,6 +16,9 @@
       <div class="bar">
         <h3 class="sec">Recent Scans</h3>
         <div class="filters">
+          <select v-if="userIds.length > 2" v-model="userFilter" class="userfilter">
+            <option v-for="u in userIds" :key="u" :value="u">{{ u === 'All' ? 'All users' : (u === 'anonymous' ? 'Anonymous' : 'User ' + u.slice(0, 8)) }}</option>
+          </select>
           <button v-for="f in scanFilters" :key="f" :class="{ on: scanFilter === f }" @click="scanFilter = f">{{ f }}</button>
         </div>
       </div>
@@ -105,17 +108,24 @@ export default {
     return {
       scans: [], reports: [], counts: { standard: 0, multi: 0, video: 0, bills: 0 },
       loading: true, repLoading: true, error: '',
-      scanFilter: 'All', preview: null, openTab: {}
+      scanFilter: 'All', userFilter: 'All', preview: null, openTab: {}
     }
   },
   computed: {
     scanFilters() { return ['All', 'Standard', 'Multi', 'Video', 'Genuine', 'Counterfeit'] },
+    userIds() {
+      const ids = [...new Set(this.scans.map(s => s._uid).filter(Boolean))]
+      ids.sort((a, b) => (a === 'anonymous' ? 1 : b === 'anonymous' ? -1 : a.localeCompare(b)))
+      return ['All', ...ids]
+    },
     filteredScans() {
+      let list = this.scans
+      if (this.userFilter !== 'All') list = list.filter(s => s._uid === this.userFilter)
       const f = this.scanFilter
-      if (f === 'All') return this.scans
-      if (f === 'Genuine') return this.scans.filter(s => this.isGenuine(s))
-      if (f === 'Counterfeit') return this.scans.filter(s => !this.isGenuine(s))
-      return this.scans.filter(s => s.type === f)
+      if (f === 'All') return list
+      if (f === 'Genuine') return list.filter(s => this.isGenuine(s))
+      if (f === 'Counterfeit') return list.filter(s => !this.isGenuine(s))
+      return list.filter(s => s.type === f)
     }
   },
   async mounted() {
@@ -129,7 +139,7 @@ export default {
             if (!userScans || typeof userScans !== 'object') continue
             for (const [sid, rec] of Object.entries(userScans)) {
               if (!rec || typeof rec !== 'object') continue
-              all.push({ ...rec, _id: `${c.type}:${uid}:${sid}`, type: c.type })
+              all.push({ ...rec, _id: `${c.type}:${uid}:${sid}`, _uid: uid, type: c.type })
             }
           }
         }
@@ -202,6 +212,8 @@ export default {
 .filters button { background: var(--bg-card); border: 1px solid rgba(255,255,255,.08); color: var(--text-muted);
   padding: .3rem .75rem; border-radius: 999px; font-size: .78rem; cursor: pointer; }
 .filters button.on { background: rgba(255,163,26,.15); color: #ffa31a; border-color: rgba(255,163,26,.3); }
+.userfilter { background: var(--bg-card); border: 1px solid rgba(255,255,255,.08); color: var(--text-muted);
+  padding: .3rem .6rem; border-radius: 8px; font-size: .78rem; cursor: pointer; margin-right: .35rem; }
 .state { color: var(--text-muted); padding: 2rem; text-align: center; }
 .state.err { color: #f87171; display: flex; gap: .5rem; justify-content: center; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
