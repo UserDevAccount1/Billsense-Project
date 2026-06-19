@@ -14,7 +14,7 @@
       </div>
 
       <div class="bar">
-        <h3 class="sec">Recent Scans</h3>
+        <h3 class="sec">Recent Scans <span class="live"><span class="dot"></span>Live · auto-refresh</span></h3>
         <div class="filters">
           <select v-if="userIds.length > 2" v-model="userFilter" class="userfilter">
             <option v-for="u in userIds" :key="u" :value="u">{{ u === 'All' ? 'All users' : (u === 'anonymous' ? 'Anonymous' : 'User ' + u.slice(0, 8)) }}</option>
@@ -108,7 +108,8 @@ export default {
     return {
       scans: [], reports: [], counts: { standard: 0, multi: 0, video: 0, bills: 0 },
       loading: true, repLoading: true, error: '',
-      scanFilter: 'All', userFilter: 'All', preview: null, openTab: {}
+      scanFilter: 'All', userFilter: 'All', preview: null, openTab: {},
+      pollTimer: null, lastUpdated: null
     }
   },
   computed: {
@@ -129,32 +130,9 @@ export default {
     }
   },
   async mounted() {
-    // Scan images (nested userId -> scanId -> record)
-    try {
-      const all = []
-      for (const c of SCAN_COLLECTIONS) {
-        const tree = await value(c.path)
-        if (tree && typeof tree === 'object') {
-          for (const [uid, userScans] of Object.entries(tree)) {
-            if (!userScans || typeof userScans !== 'object') continue
-            for (const [sid, rec] of Object.entries(userScans)) {
-              if (!rec || typeof rec !== 'object') continue
-              all.push({ ...rec, _id: `${c.type}:${uid}:${sid}`, _uid: uid, type: c.type })
-            }
-          }
-        }
-      }
-      all.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')))
-      this.scans = all
-    } catch (e) { this.error = e.message }
-    finally { this.loading = false }
-
-    try {
-      const [s, m, v, b] = await Promise.all([
-        count('Standard Scan'), count('Multi Scan'), count('Video Scan'), count('Bills')
-      ])
-      this.counts = { standard: s, multi: m, video: v, bills: b }
-    } catch (_) {}
+    await this.loadScans()
+    // Auto-refresh so a scan a user just finished shows up without a manual reload.
+    this.pollTimer = setInterval(() => this.loadScans(true), 12000)
 
     // Session reports
     try {
@@ -166,7 +144,39 @@ export default {
     } catch (_) {}
     finally { this.repLoading = false }
   },
+  beforeUnmount() {
+    if (this.pollTimer) clearInterval(this.pollTimer)
+  },
   methods: {
+    async loadScans(silent) {
+      try {
+        const all = []
+        for (const c of SCAN_COLLECTIONS) {
+          const tree = await value(c.path)
+          if (tree && typeof tree === 'object') {
+            for (const [uid, userScans] of Object.entries(tree)) {
+              if (!userScans || typeof userScans !== 'object') continue
+              for (const [sid, rec] of Object.entries(userScans)) {
+                if (!rec || typeof rec !== 'object') continue
+                all.push({ ...rec, _id: `${c.type}:${uid}:${sid}`, _uid: uid, type: c.type })
+              }
+            }
+          }
+        }
+        all.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')))
+        this.scans = all
+        this.error = ''
+        this.lastUpdated = new Date()
+      } catch (e) { if (!silent) this.error = e.message }
+      finally { this.loading = false }
+
+      try {
+        const [s, m, v, b] = await Promise.all([
+          count('Standard Scan'), count('Multi Scan'), count('Video Scan'), count('Bills')
+        ])
+        this.counts = { standard: s, multi: m, video: v, bills: b }
+      } catch (_) {}
+    },
     isGenuine(s) {
       const a = s.authenticity
       const str = (typeof a === 'string' ? a : (a && a.status) || s.isGenuine || '').toString().toUpperCase()
@@ -207,6 +217,9 @@ export default {
 .stat .l { font-size: .8rem; color: var(--text-muted); margin-top: .25rem; }
 .bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
 .sec { margin: 0 0 .85rem; font-size: 1.05rem; }
+.live { font-size: .68rem; color: #4ade80; font-weight: 500; margin-left: .6rem; display: inline-flex; align-items: center; gap: .3rem; vertical-align: middle; }
+.live .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 .sec.mt { margin-top: 2rem; }
 .filters { display: flex; gap: .4rem; flex-wrap: wrap; }
 .filters button { background: var(--bg-card); border: 1px solid rgba(255,255,255,.08); color: var(--text-muted);
