@@ -6,3 +6,9 @@ runs/
 *.pt
 __pycache__/
 *.zip
+
+# TFLite export artifacts (staged in GCS, not the repo)
+tflite_out/
+_export_log*.txt
+*_saved_model/
+*.onnx
