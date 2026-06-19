@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.17")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.18")
 
 # CORS
 app.add_middleware(
@@ -474,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.17',
+            'logic_version': '17.18',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -501,11 +501,45 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
         }
         
         collection_name = collection_map.get(scan_type, "real_time_scans")
-        
-        # Store in Firebase
+
+        # Store in Firebase (Firestore — analytics/history)
         storage_id = firebase_client.store_scan_result(firebase_result, user_id, collection_name)
         print(f"✅ Real-time {scan_type} result stored in Firebase: {storage_id}")
-        
+
+        # ALSO mirror into Realtime Database so the ADMIN dashboard's Scan Reports
+        # (which reads RTDB 'Standard Scan'/'Multi Scan'/'Video Scan' in camelCase)
+        # shows the latest user scans. Without this, scans only landed in Firestore
+        # and the admin never saw anything newer than the last app-written record.
+        try:
+            rtdb_node = {
+                "standard_scan": "Standard Scan",
+                "multi_scan": "Multi Scan",
+                "video_scan": "Video Scan",
+            }.get(scan_type, "Standard Scan")
+            rtdb_record = {
+                "scanId": scan_id,
+                "userId": user_id,
+                "type": scan_type.replace("_scan", "").capitalize(),
+                "timestamp": firebase_result["timestamp"],
+                "denomination": firebase_result["denomination"],
+                "authenticity": firebase_result["authenticity_status"],
+                "isGenuine": firebase_result["is_genuine"],
+                "confidence": firebase_result["confidence"],
+                "coveragePercentage": firebase_result["coverage_percentage"],
+                "detectedFeaturesCount": firebase_result["feature_count"],
+                "totalExpectedFeatures": firebase_result["total_expected_features"],
+                "featuresDetected": firebase_result["features_detected"],
+                "processingTime": firebase_result["processing_time"],
+                "framesProcessed": firebase_result.get("frames_processed", 0),
+                "reasons": firebase_result["reasons"],
+                "isHighDenomination": firebase_result["is_high_denomination"],
+                "annotatedImageUrl": firebase_result["annotated_image_url"],
+                "logicVersion": firebase_result["logic_version"],
+            }
+            firebase_client.store_scan_rtdb(rtdb_node, user_id, scan_id, rtdb_record)
+        except Exception as mirror_err:
+            print(f"⚠️ RTDB mirror skipped: {mirror_err}")
+
         return storage_id
         
     except Exception as e:
@@ -2489,7 +2523,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.17",
+            "logic_version": "17.18",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2502,7 +2536,33 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
         print("=" * 60)
         print("✅ STANDARD SCAN COMPLETED SUCCESSFULLY (PARALLEL)")
         print("=" * 60)
-        
+
+        # Mirror into RTDB 'Standard Scan' so the admin dashboard sees photo scans too.
+        try:
+            if FIREBASE_AVAILABLE:
+                auth = result.get("authenticity", {}) or {}
+                firebase_client.store_scan_rtdb("Standard Scan", user_id, scan_id, {
+                    "scanId": scan_id,
+                    "userId": user_id,
+                    "type": "Standard",
+                    "timestamp": final_result["timestamp"],
+                    "denomination": final_result.get("denomination", "UNKNOWN"),
+                    "authenticity": auth.get("status", "UNKNOWN"),
+                    "isGenuine": auth.get("is_genuine", False),
+                    "confidence": auth.get("confidence", "LOW"),
+                    "coveragePercentage": final_result.get("coverage_percentage", 0),
+                    "detectedFeaturesCount": final_result.get("detected_features_count", 0),
+                    "totalExpectedFeatures": final_result.get("total_expected_features", 6),
+                    "featuresDetected": result.get("detected_features", []),
+                    "reasons": auth.get("reasons", []),
+                    "isHighDenomination": final_result.get("is_high_denomination", False),
+                    "annotatedImageUrl": annotated_image_url,
+                    "processingTime": processing_time,
+                    "logicVersion": "17.18",
+                })
+        except Exception as mirror_err:
+            print(f"⚠️ RTDB mirror (REST standard) skipped: {mirror_err}")
+
         return JSONResponse(final_result)
         
     except Exception as e:
@@ -2579,7 +2639,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.17",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.18",
     }
     try:
         from billy_rag import billy_rag
@@ -2910,7 +2970,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.17",
+                "logic_version": "17.18",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2955,7 +3015,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.17",
+        "api_version": "17.18",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [

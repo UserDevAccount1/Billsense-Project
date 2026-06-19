@@ -1,5 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import credentials, firestore, storage, db as rtdb
 import uuid
 from datetime import datetime
 import cv2
@@ -29,9 +29,10 @@ class FirebaseClient:
                 print("✅ Service account key found, initializing Firebase...")
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred, {
-                    'storageBucket': 'bill-sense-aec6b.firebasestorage.app'
+                    'storageBucket': 'bill-sense-aec6b.firebasestorage.app',
+                    'databaseURL': 'https://bill-sense-aec6b-default-rtdb.firebaseio.com'
                 })
-                
+
                 self.db = firestore.client()
                 self.bucket = storage.bucket()
                 
@@ -53,7 +54,8 @@ class FirebaseClient:
                 print("⚠️ serviceAccountKey.json not found — using Application Default Credentials")
                 cred = credentials.ApplicationDefault()
                 firebase_admin.initialize_app(cred, {
-                    'storageBucket': 'bill-sense-aec6b.firebasestorage.app'
+                    'storageBucket': 'bill-sense-aec6b.firebasestorage.app',
+                    'databaseURL': 'https://bill-sense-aec6b-default-rtdb.firebaseio.com'
                 })
                 self.db = firestore.client()
                 self.bucket = storage.bucket()
@@ -125,12 +127,29 @@ class FirebaseClient:
             print(f"✅ Results stored in {collection_name} with ID: {doc_ref.id}")
             print(f"📋 Scan type: {scan_data.get('analysis_type', 'unknown')}")
             print(f"👤 User: {user_id}")
-            
+
             return doc_ref.id
-            
+
         except Exception as e:
             print(f"❌ Firebase storage error: {e}")
             raise e
+
+    def store_scan_rtdb(self, node_name, user_id, scan_id, data):
+        """Mirror a scan record into Realtime Database so the ADMIN dashboard
+        (which reads RTDB 'Standard Scan'/'Multi Scan'/'Video Scan', NOT Firestore)
+        shows the latest user scans. The app's custom login can't satisfy the
+        auth!=null RTDB write rule, so app-side writes stopped — but the server's
+        service account can write, so this keeps the scan history live.
+        Path: '<Node Name>/<user_id>/<scan_id>'."""
+        try:
+            uid = (str(user_id) or "anonymous").replace('/', '_').replace('.', '_') or "anonymous"
+            sid = (str(scan_id) or "").replace('/', '_') or str(uuid.uuid4())
+            rtdb.reference(f"{node_name}/{uid}/{sid}").set(data)
+            print(f"✅ Scan mirrored to RTDB: {node_name}/{uid}/{sid}")
+            return True
+        except Exception as e:
+            print(f"❌ RTDB mirror error ({node_name}): {e}")
+            return False
 
     def store_annotated_image(self, image: np.ndarray, user_id: str, scan_id: str, custom_path: str = None) -> str:
         """Store annotated image in organized Firebase Storage structure"""
