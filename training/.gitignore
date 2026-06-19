@@ -12,3 +12,6 @@ tflite_out/
 _export_log*.txt
 *_saved_model/
 *.onnx
+calib_subset/
+calibration_image_sample_data*.npy
+calibration_image_sample_data*.zip

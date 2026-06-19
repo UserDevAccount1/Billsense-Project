@@ -20,11 +20,14 @@ cfg = {
     "scan_mode": "on_device",
     "updated_at": datetime.now(timezone.utc).isoformat(),
     "updated_by": "claude-offline-port-v1.5.11",
+    # int8 (~11.5 MB each) for a light offline download — consistent with the old
+    # int8 security model. float32 (~45 MB) is also in ml_models/ if int8 accuracy
+    # proves poor on-device; swap the file/size/path to *_float32.tflite to use it.
     "active_models": {
-        "denomination": {"enabled": True, "file": "denomination2_float32.tflite",
-                          "size_mb": 44.8, "storage_path": "ml_models/denomination2_float32.tflite"},
-        "securitycf": {"enabled": True, "file": "securitycf_float32.tflite",
-                       "size_mb": 44.8, "storage_path": "ml_models/securitycf_float32.tflite"},
+        "denomination": {"enabled": True, "file": "denomination2_int8.tflite",
+                          "size_mb": 11.5, "storage_path": "ml_models/denomination2_int8.tflite"},
+        "securitycf": {"enabled": True, "file": "securitycf_int8.tflite",
+                       "size_mb": 11.5, "storage_path": "ml_models/securitycf_int8.tflite"},
     },
 }
 r = requests.post(f"{BASE}/patch", json={"path": "ml_config", "data": cfg}, timeout=25)

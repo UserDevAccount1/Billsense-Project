@@ -258,8 +258,11 @@ public class UploadScanActivity extends AppCompatActivity {
      */
     private void tryLoadCachedModels() {
         File modelsDir = new File(getFilesDir(), "tflite_models");
-        File securitycfFile = new File(modelsDir, "securitycf_float32.tflite");
-        File denominationFile = new File(modelsDir, "denomination2_float32.tflite");
+        // Prefer int8 (lighter) but fall back to float32 — works with either ml_config.
+        File securitycfFile = new File(modelsDir, "securitycf_int8.tflite");
+        if (!securitycfFile.exists()) securitycfFile = new File(modelsDir, "securitycf_float32.tflite");
+        File denominationFile = new File(modelsDir, "denomination2_int8.tflite");
+        if (!denominationFile.exists()) denominationFile = new File(modelsDir, "denomination2_float32.tflite");
 
         if (securitycfFile.exists() && securitycfFile.length() > 1_000_000) {
             if (securitycfInference == null) {
