@@ -469,9 +469,24 @@ export default {
       ],
       apkBuilds: [
         {
+          id: 110, version: '1.5.10', versionCode: 25, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-06-19T11:45:39Z', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.app.billsense', isLatest: true,
+          distribution: 'Direct install (adb) to device G10000000042672',
+          downloadUrl: '',
+          description: 'Latest build. Refreshed Google Maps API key (Cases map). Runs against server v17.19: genuine bills no longer flagged COUNTERFEIT (corroboration rule, verified 0/30), deep accumulated live scan, and Scan Reports now record + attribute every user scan (RTDB mirror + per-user filter + auto-refresh).',
+          changes: [
+            { type: 'feat', text: 'New Google Maps API key baked in for the Cases map' },
+            { type: 'fix', text: 'Server v17.17 — genuine bills no longer flagged COUNTERFEIT (verified 0/30)' },
+            { type: 'feat', text: 'Server v17.16 — deep accumulated live scan (coverage grows across frames)' },
+            { type: 'fix', text: 'Server v17.18/v17.19 — scans persist to RTDB + attribute to the real user' }
+          ],
+          dependencies: ['Play Services Maps 19.2.0', 'TFLite 2.14.0', 'CameraX 1.4.2']
+        },
+        {
           id: 101, version: '1.4.2', versionCode: 7, variant: 'main', buildType: 'debug', status: 'testing',
           buildDate: '2026-06-17T17:00:00', size: '55.4 MB', minSdk: 24, targetSdk: 35,
-          packageName: 'com.app.billsense', isLatest: true,
+          packageName: 'com.app.billsense', isLatest: false,
           distribution: 'Firebase App Distribution',
           downloadUrl: 'https://appdistribution.firebase.google.com/testerapps/1:340624938055:android:81d528ded5f924a23fcd62/releases/4rli93dtin028',
           description: 'Newest build (v1.4.2). Distributed via Firebase App Distribution to the testers group + userdeveloper554@gmail.com. Billy AI knows the BillSense research (Joy Canutab, University of the Cordilleras); on-device TFLite offline scanning; live Cloud Run backend verified. Install from the link on any device signed in as a tester.',
