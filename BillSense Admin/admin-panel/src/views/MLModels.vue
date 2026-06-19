@@ -121,7 +121,11 @@ const ENSEMBLE = [
   { file: 'ovd.pt', role: 'Optically Variable Device', out: 'foil region polygons',
     version: 'v1', trained: 'original', metric: '—', note: 'High-denomination tilt feature' },
   { file: 'evp.pt', role: 'Enhanced Value Panel', out: '500 / 1000 EVP + false EVP',
-    version: 'v1', trained: 'original', metric: '—', note: 'Original forgery marker' }
+    version: 'v1', trained: 'original', metric: '—', note: 'Original forgery marker' },
+  { file: 'denomination2_int8.tflite', role: 'On-device denomination (offline)', out: '20 · 50 · 100 · 200 · 500 · 1000',
+    version: 'v2 int8', trained: '2026-06-20', metric: '~12 MB', note: 'OFFLINE — TFLite export of denomination2 for on-device scanning' },
+  { file: 'securitycf_int8.tflite', role: 'On-device security + counterfeit (offline)', out: 'watermark · see-through · shadow · thread · concealed · OVI · EVP + false_* markers',
+    version: 'v1 int8', trained: '2026-06-20', metric: '~12 MB', note: 'OFFLINE — TFLite export of securitycf; server-matched corroboration verdict on-device' }
 ]
 
 export default {

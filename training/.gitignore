@@ -15,3 +15,6 @@ _export_log*.txt
 calib_subset/
 calibration_image_sample_data*.npy
 calibration_image_sample_data*.zip
+_logcat_offline.txt
+_test_model_download.py
+_export_int8_log.txt

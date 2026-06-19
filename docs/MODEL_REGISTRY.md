@@ -17,6 +17,19 @@ human-readable history of what changed.
 
 ## Change log
 
+### 2026-06-20 — Offline (on-device) TFLite models (app 1.5.12)
+- Offline scanning (`scan_mode=on_device` in RTDB `ml_config`) now uses **TFLite exports of the
+  improved models** instead of the old `counterfeit_best`/`security_best`:
+  `denomination2_int8.tflite` + `securitycf_int8.tflite` (also `_float32` variants) in Firebase
+  Storage `ml_models/` (~12 MB int8 / ~45 MB float32 each).
+- Export: `training/export_tflite.py` (float32) / `export_tflite_int8.py` (int8, calibrated on
+  `training/calib_data.yaml`) — run in a clean venv (`tensorflow-cpu + tf_keras + onnx2tf`,
+  `TF_USE_LEGACY_KERAS=1`; the dev global env's numpy/ml_dtypes is corrupted).
+- On-device verdict: `TFLiteInference.buildOfflineResponse()` mirrors the server corroboration
+  rule; offline scans persist to the admin via the SA cPanel proxy.
+- Cutover: `training/_cutover_mlconfig_offline.py CONFIRM` (defaults to int8; swap to `_float32`
+  if int8 accuracy is poor on-device).
+
 ### 2026-06-18 — `securitycf.pt` v1 (server API v17.13)
 - **New model.** Trained on 3 merged Roboflow security datasets (`ph-fake-bill-detection`,
   `ph-false-bill-detection`, `ph-bill-feature-detection`) via `training/colab_train_security.py`.

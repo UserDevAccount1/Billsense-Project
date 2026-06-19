@@ -469,9 +469,24 @@ export default {
       ],
       apkBuilds: [
         {
-          id: 110, version: '1.5.10', versionCode: 25, variant: 'main', buildType: 'debug', status: 'testing',
-          buildDate: '2026-06-19T11:45:39Z', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          id: 112, version: '1.5.12', versionCode: 27, variant: 'main', buildType: 'debug', status: 'testing',
+          buildDate: '2026-06-20T01:30:00Z', size: '55.4 MB', minSdk: 24, targetSdk: 35,
           packageName: 'com.app.billsense', isLatest: true,
+          distribution: 'Direct install (adb) to device G10000000042672',
+          downloadUrl: '',
+          description: 'Offline scanning ported to the improved models: on-device denomination2 + securitycf (int8 TFLite, ~12MB each) with a server-matched verdict; offline scans now persist to the admin via the SA proxy. Includes the Maps key + all server fixes (v17.19).',
+          changes: [
+            { type: 'feat', text: 'Offline (on-device) scanning now uses denomination2 + securitycf TFLite' },
+            { type: 'feat', text: 'Offline verdict mirrors the server corroboration rule (no genuine->COUNTERFEIT)' },
+            { type: 'fix', text: 'Offline scans persist + attribute to admin Scan Reports (SA proxy)' },
+            { type: 'feat', text: 'int8 models (~12MB) for a light offline download' }
+          ],
+          dependencies: ['TFLite 2.x', 'Play Services Maps 19.2.0', 'CameraX 1.4.2']
+        },
+        {
+          id: 110, version: '1.5.10', versionCode: 25, variant: 'main', buildType: 'debug', status: 'superseded',
+          buildDate: '2026-06-19T11:45:39Z', size: '55.4 MB', minSdk: 24, targetSdk: 35,
+          packageName: 'com.app.billsense', isLatest: false,
           distribution: 'Direct install (adb) to device G10000000042672',
           downloadUrl: '',
           description: 'Latest build. Refreshed Google Maps API key (Cases map). Runs against server v17.19: genuine bills no longer flagged COUNTERFEIT (corroboration rule, verified 0/30), deep accumulated live scan, and Scan Reports now record + attribute every user scan (RTDB mirror + per-user filter + auto-refresh).',
