@@ -130,6 +130,14 @@ public class CasesActivity extends AppCompatActivity implements OnMapReadyCallba
                 for (DataSnapshot snapshot : dataSnapshot.getChildren()){
                     Cases cases = snapshot.getValue(Cases.class);
                     if (cases == null) continue;
+                    // Approval gate: the admin "disallows" a case by rejecting or archiving it.
+                    // Only show cases the admin has allowed (not rejected, not archived), and
+                    // skip any without real coordinates.
+                    String st = cases.getStatus() == null ? "" : cases.getStatus().trim().toLowerCase();
+                    boolean disallowed = cases.getIsArchived() || st.equals("rejected");
+                    boolean hasLatLng = cases.getLatitude() != null && cases.getLongitude() != null
+                            && !(cases.getLatitude() == 0 && cases.getLongitude() == 0);
+                    if (disallowed || !hasLatLng) continue;
                     casesArrayList.add(cases);
                     addCasesLocations(cases);
                     //                    LatLng latLng = new LatLng(cases.getLatitude(), cases.getLongitude());

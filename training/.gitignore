@@ -18,3 +18,6 @@ calibration_image_sample_data*.zip
 _logcat_offline.txt
 _test_model_download.py
 _export_int8_log.txt
+_test_case_flow.py
+_cleanup_test_cases.py
+_screen*.png

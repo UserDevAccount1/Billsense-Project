@@ -779,8 +779,11 @@ public class FBUtils {
     @SafeVarargs
     public final void saveCaseEvidenceData(String path, FBInterface.OnCaseDataSaveCallBack listener,
                                            Pair<String, Object>... pairs) {
-        DatabaseReference caseRef = database.getReference(path);
-        String uniqueId = caseRef.push().getKey();
+        // push().getKey() is a CLIENT-side id (no write). The actual write goes through the
+        // SA cPanel proxy: the app's custom login can't satisfy the .write:"auth != null"
+        // RTDB rule, so a direct SDK write is rejected ("Permission denied") — which is why
+        // user-submitted cases never saved. The proxy (service account) writes them in.
+        String uniqueId = database.getReference(path).push().getKey();
         if (uniqueId == null) {
             listener.onCaseDataSaveFailure(new Exception("Failed to generate unique ID for " + path));
             return;
@@ -790,10 +793,35 @@ public class FBUtils {
             dataMap.put(pair.first, pair.second);
         }
         dataMap.put("id", uniqueId);
-        caseRef.child(uniqueId).updateChildren(dataMap)
-                .addOnSuccessListener(aVoid -> listener.onCaseDataSaveSuccess())
-                .addOnFailureListener(listener::onCaseDataSaveFailure);
-
+        try {
+            org.json.JSONObject body = new org.json.JSONObject();
+            body.put("path", path + "/" + uniqueId);
+            body.put("data", new org.json.JSONObject(dataMap));
+            Request request = new Request.Builder()
+                    .url("https://billsense.dev-environment.site/api/db/patch")
+                    .post(okhttp3.RequestBody.create(body.toString(),
+                            okhttp3.MediaType.parse("application/json")))
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                    new android.os.Handler(android.os.Looper.getMainLooper())
+                            .post(() -> listener.onCaseDataSaveFailure(e));
+                }
+                @Override
+                public void onResponse(@NonNull Call call, @NonNull Response response) {
+                    boolean ok = response.isSuccessful();
+                    response.close();
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        if (ok) listener.onCaseDataSaveSuccess();
+                        else listener.onCaseDataSaveFailure(new Exception("Proxy write failed (HTTP "
+                                + response.code() + ")"));
+                    });
+                }
+            });
+        } catch (Exception e) {
+            listener.onCaseDataSaveFailure(e);
+        }
     }
 
     @SafeVarargs
