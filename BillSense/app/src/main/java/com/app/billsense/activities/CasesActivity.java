@@ -30,6 +30,7 @@ import com.bumptech.glide.Glide;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
@@ -56,6 +57,15 @@ public class CasesActivity extends AppCompatActivity implements OnMapReadyCallba
 
         userId = PrefManager.getInstance().getUserId();
         fbUtils = new FBUtils();
+
+        // Force the LEGACY Maps renderer. The newer maps_core renderer fails to fetch
+        // tiles on devices whose Google Play Services account is in a BAD_AUTHENTICATION
+        // state (observed on-device: blank tiles, Google logo only, no auth-failure log).
+        // The legacy renderer fetches tiles more directly and is robust to that.
+        try {
+            MapsInitializer.initialize(getApplicationContext(),
+                    MapsInitializer.Renderer.LEGACY, renderer -> { });
+        } catch (Exception ignored) { }
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
