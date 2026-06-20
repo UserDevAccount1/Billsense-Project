@@ -52,6 +52,9 @@ import com.app.billsense.databinding.DialogFeelBillBinding;
 import com.app.billsense.interfaces.FBInterface;
 import com.app.billsense.scan.multi.MultiPostScanActivity;
 import com.app.billsense.scan.pojo.RealTimeScanManager;
+import com.app.billsense.scan.pojo.StandardScanResponse;
+import com.app.billsense.scan.pojo.TFLiteInference;
+import com.app.billsense.scan.pojo.TFLiteModelManager;
 import com.app.billsense.scan.pojo.RealTimeScanResponse;
 import com.app.billsense.utils.FBStorageUtils;
 import com.app.billsense.utils.FBUtils;
@@ -107,6 +110,11 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     // --- CameraX Components ---
     private ExecutorService cameraExecutor;
     private ImageCapture imageCapture;
+    private TFLiteModelManager modelManager;
+    private TFLiteInference denominationInference;
+    private TFLiteInference securitycfInference;
+    private boolean offlineMode = false;
+    private boolean onDeviceReady = false;
     private ImageAnalysis imageAnalysis;
     private YuvToRgbConverter yuvToRgbConverter;
 
@@ -132,12 +140,41 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         yuvToRgbConverter = new YuvToRgbConverter(this);
         scanManager = new RealTimeScanManager(this);
 
+        // Offline mode: the live scan normally streams frames to the server over a
+        // WebSocket (cloud-only). When the user is in on-device mode, skip the WebSocket
+        // entirely and run the captured frame through the bundled TFLite models instead,
+        // so the live scan works with no internet (was: "Connection failed").
+        modelManager = TFLiteModelManager.getInstance(this);
+        offlineMode = modelManager.isOnDeviceMode();
+        if (offlineMode) loadOfflineModels();
+
         initPermissionLauncher();
         setupButtonClickListeners();
         setupHideShowInfoButton();
         updateButtonAndUiState();
 
         requestCameraPermissionThenLaunchCamera();
+    }
+
+    private void loadOfflineModels() {
+        try {
+            File dir = new File(getFilesDir(), "tflite_models");
+            File denomF = new File(dir, "denomination2_int8.tflite");
+            File scfF = new File(dir, "securitycf_int8.tflite");
+            if (denomF.exists() && denomF.length() > 1_000_000) {
+                denominationInference = new TFLiteInference("denomination");
+                denominationInference.loadModel(denomF);
+            }
+            if (scfF.exists() && scfF.length() > 1_000_000) {
+                securitycfInference = new TFLiteInference("securitycf");
+                securitycfInference.loadModel(scfF);
+            }
+            onDeviceReady = securitycfInference != null && securitycfInference.isLoaded();
+            Log.d(TAG, "Offline live-scan models ready: " + onDeviceReady);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load offline models", e);
+            onDeviceReady = false;
+        }
     }
 
     // --- Lifecycle and Permissions ---
@@ -218,6 +255,15 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
      * up never errors — so if it hasn't opened within 12s we warm up and retry.
      */
     private void connectAndWatch() {
+        if (offlineMode) {
+            // No WebSocket offline — the captured frame is scanned on-device on "Scan".
+            wsConnected = false;
+            runOnUiThread(() -> Toast.makeText(this,
+                    onDeviceReady ? "Offline mode — capture a bill to scan on-device"
+                                  : "Offline models not installed — Profile → Scanning Settings",
+                    Toast.LENGTH_SHORT).show());
+            return;
+        }
         // RealTimeScanManager now handles warm-up + cold-start retry internally.
         wsConnected = false;
         scanManager.connect(RealTimeScanManager.ENDPOINT_STANDARD_SCAN);
@@ -229,6 +275,8 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
         retryHandler.removeCallbacksAndMessages(null);
         cameraExecutor.shutdown();
         scanManager.disconnect(); // Final cleanup
+        if (denominationInference != null) denominationInference.close();
+        if (securitycfInference != null) securitycfInference.close();
     }
 
     @Override
@@ -255,6 +303,7 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
                 .build();
 
         imageAnalysis.setAnalyzer(cameraExecutor, image -> {
+            if (offlineMode) { image.close(); return; }  // no live streaming offline
             if (canSendFrame) {
                 canSendFrame = false;
                 Bitmap bitmap = Bitmap.createBitmap(image.getWidth(), image.getHeight(), Bitmap.Config.ARGB_8888);
@@ -370,12 +419,60 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
             return;
         }
         scanManager.disconnect();
-        // We now pass a single image path to the PostScanActivity
+        if (offlineMode) {
+            if (!onDeviceReady) {
+                Toast.makeText(this, "Offline models not installed. Profile → Scanning Settings → Download.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            processOfflineCapture();
+            return;
+        }
+        // Online: hand the captured image to the cloud post-scan (REST).
         Intent intent = new Intent(this, StandardPostScanActivity.class);
-        // Pass the URI of the single captured image
         intent.putExtra("captured_image_uri", capturedImageUri.toString());
         startActivity(intent);
         finish();
+    }
+
+    /** Run the captured frame through the on-device TFLite models (no internet) and show
+     *  the result via the post-scan screen's pre-computed-result path. */
+    private void processOfflineCapture() {
+        showProgressDialog(this);
+        final Uri uri = capturedImageUri;
+        new Thread(() -> {
+            try {
+                Bitmap bitmap;
+                try (InputStream is = getContentResolver().openInputStream(uri)) {
+                    bitmap = BitmapFactory.decodeStream(is);
+                }
+                bitmap = rotateBitmapIfRequired(this, uri, bitmap);
+
+                List<TFLiteInference.Detection> scfDets = securitycfInference.runInference(bitmap);
+                List<TFLiteInference.Detection> denomDets = new ArrayList<>();
+                if (denominationInference != null && denominationInference.isLoaded()) {
+                    denomDets = denominationInference.runInference(bitmap);
+                }
+                StandardScanResponse resp = TFLiteInference.buildOfflineResponse(denomDets, scfDets);
+                resp.processingMode = "on_device";
+                String json = new Gson().toJson(resp);
+
+                runOnUiThread(() -> {
+                    hideProgressDialog();
+                    Intent intent = new Intent(this, StandardPostScanActivity.class);
+                    intent.putExtra("scan_result_json", json);
+                    intent.putExtra("scanned_image_uri", uri.toString());
+                    startActivity(intent);
+                    finish();
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Offline scan failed", e);
+                runOnUiThread(() -> {
+                    hideProgressDialog();
+                    Toast.makeText(this, "Offline scan error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
     }
 
     // --- WebSocket Listener Callbacks ---
