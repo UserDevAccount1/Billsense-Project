@@ -366,52 +366,24 @@ public class FBUtils {
     }
 
     public void getAllDataFromPath(String path, final FBInterface.OnFetchDataCallBack onGetDataListener) {
-        // Use REST API directly — Firebase SDK hangs on some networks
-        String url = FIREBASE_REST_BASE + path + ".json";
-        Log.d("FBUtils", "getAllDataFromPath REST: " + url);
-
-        Request request = new Request.Builder().url(url).get().build();
-        httpClient.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NonNull Call call, @NonNull IOException e) {
-                Log.e("FBUtils", "getAllDataFromPath REST failed: " + e.getMessage());
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
-                    onGetDataListener.onFetchDataFailed("Network error: " + e.getMessage()));
-            }
-
-            @Override
-            public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                String body = response.body() != null ? response.body().string() : "null";
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    if (body.equals("null") || body.isEmpty()) {
-                        onGetDataListener.onDataNotFound();
-                        return;
-                    }
-                    // Parse JSON and convert to DataSnapshot-like structure via Firebase SDK
-                    // We push the data back through Firebase local cache
-                    DatabaseReference ref = database.getReference(path);
-                    try {
-                        org.json.JSONObject json = new org.json.JSONObject(body);
-                        // Set value locally then read it back as DataSnapshot
-                        java.util.Map<String, Object> map = jsonToMap(json);
-                        ref.setValue(map).addOnSuccessListener(v -> {
-                            ref.get().addOnSuccessListener(snap -> {
-                                if (snap.exists()) {
-                                    onGetDataListener.onFetchDataSuccess(snap);
-                                } else {
-                                    onGetDataListener.onDataNotFound();
-                                }
-                            }).addOnFailureListener(e2 ->
-                                onGetDataListener.onFetchDataFailed("Cache read failed: " + e2.getMessage()));
-                        }).addOnFailureListener(e2 ->
-                            onGetDataListener.onFetchDataFailed("Cache write failed: " + e2.getMessage()));
-                    } catch (Exception e) {
-                        Log.e("FBUtils", "getAllDataFromPath parse error: " + e.getMessage());
-                        onGetDataListener.onFetchDataFailed("Parse error: " + e.getMessage());
-                    }
-                });
-            }
-        });
+        // Public-read RTDB path → use a one-shot SDK get() (a READ).
+        // The previous impl fetched via REST and then did ref.setValue(map) to "materialize"
+        // a DataSnapshot — but that WRITE is rejected by the `.write: "auth != null"` rule
+        // (the app uses a custom login, so auth == null). The write failed with
+        // "Permission denied", so onFetchDataSuccess never fired and dependent screens
+        // (e.g. the Cases map markers, scan-history fragments) silently showed nothing.
+        Log.d("FBUtils", "getAllDataFromPath get(): " + path);
+        DatabaseReference ref = database.getReference(path);
+        ref.get()
+            .addOnSuccessListener(snap -> {
+                if (snap != null && snap.exists()) {
+                    onGetDataListener.onFetchDataSuccess(snap);
+                } else {
+                    onGetDataListener.onDataNotFound();
+                }
+            })
+            .addOnFailureListener(e ->
+                onGetDataListener.onFetchDataFailed("Read failed: " + e.getMessage()));
     }
 
     @SuppressWarnings("unchecked")
