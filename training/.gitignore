@@ -23,3 +23,5 @@ _cleanup_test_cases.py
 _screen*.png
 _test_billy.py
 _publish_final_1515.py
+_logcat*.txt
+_set_scanmode_cloud.py
