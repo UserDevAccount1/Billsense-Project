@@ -120,7 +120,8 @@ const DB_ROOTS = new Set([
   'Announcements', 'Bills', 'Detections', 'Notifications',
   'Standard Scan', 'Multi Scan', 'Video Scan', 'billy_analytics',
   'thesis_versions', 'thesis_panel_requests',
-  'Support', 'Trivia', 'Tutorials', 'Billy Chats', 'apk_releases'
+  'Support', 'Trivia', 'Tutorials', 'Billy Chats', 'apk_releases',
+  'Documentation'
 ]);
 function rootAllowed(p) {
   const root = String(p || '').split('/')[0];
@@ -314,9 +315,10 @@ function handleDb(req, res, op) {
 // POST /api/storage/upload  body: { folder, key, contentType, dataBase64 }
 // Uploads an image to Firebase Storage with a download token and returns the
 // public token URL (same mechanism the ML server uses for annotated images).
-const UPLOAD_FOLDERS = new Set(['trivia', 'tutorials']);
+const UPLOAD_FOLDERS = new Set(['trivia', 'tutorials', 'docs']);
 const UPLOAD_TYPES = new Map([
-  ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp']
+  ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp'],
+  ['application/pdf', '.pdf']
 ]);
 function handleStorageUpload(req, res) {
   if (req.method !== 'POST') return jsonResponse(res, 405, { error: 'POST only' });

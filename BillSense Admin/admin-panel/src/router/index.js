@@ -10,6 +10,7 @@ import Thesis from '../views/Thesis.vue'
 import SupportTickets from '../views/SupportTickets.vue'
 import Notifications from '../views/Notifications.vue'
 import Content from '../views/Content.vue'
+import Documentation from '../views/Documentation.vue'
 import Login from '../views/Login.vue'
 import Users from '../views/Users.vue'
 import ScanReports from '../views/ScanReports.vue'
@@ -37,6 +38,7 @@ const routes = [
   { path: '/support', name: 'SupportTickets', component: SupportTickets },
   { path: '/notifications', name: 'Notifications', component: Notifications },
   { path: '/content', name: 'Content', component: Content },
+  { path: '/documentation', name: 'Documentation', component: Documentation },
   { path: '/settings', name: 'Settings', component: Settings }
 ]
 

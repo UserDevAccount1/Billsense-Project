@@ -114,6 +114,12 @@
             </router-link>
           </li>
           <li>
+            <router-link to="/documentation" @click="mobileMenuOpen = false">
+              <span class="material-icons">description</span>
+              <span class="nav-text">Documentation</span>
+            </router-link>
+          </li>
+          <li>
             <router-link to="/settings" @click="mobileMenuOpen = false">
               <span class="material-icons">settings</span>
               <span class="nav-text">Settings</span>
