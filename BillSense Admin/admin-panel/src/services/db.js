@@ -10,7 +10,7 @@
 
 const CPANEL_PROXY_ORIGIN = 'https://billsense.dev-environment.site'
 
-function proxyBase() {
+export function proxyBase() {
   if (typeof window === 'undefined') return CPANEL_PROXY_ORIGIN
   return window.location.hostname === 'billsense.dev-environment.site'
     ? ''                       // same-origin on cPanel

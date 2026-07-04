@@ -52,7 +52,7 @@ function getAccessToken() {
     const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const claims = b64url(JSON.stringify({
       iss: SA.client_email,
-      scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/devstorage.read_write',
+      scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/devstorage.read_write https://www.googleapis.com/auth/cloud-platform',
       aud: 'https://oauth2.googleapis.com/token',
       iat: now,
       exp: now + 3600
@@ -411,6 +411,70 @@ function handleStorageUpload(req, res) {
   req.on('error', () => { /* client aborted (e.g. after 413) — response already sent */ });
 }
 
+// POST /api/appdist/invite  body: { email, releaseId }
+// Adds the email as a tester on a Firebase App Distribution release —
+// Firebase then sends them the official install-invite email.
+const APPDIST_PROJECT = '340624938055';
+const APPDIST_APP = '1:340624938055:android:81d528ded5f924a23fcd62';
+function handleAppDistInvite(req, res) {
+  if (req.method !== 'POST') return jsonResponse(res, 405, { error: 'POST only' });
+  if (!SA) return jsonResponse(res, 503, { error: 'Server has no Firebase service account configured.' });
+
+  const chunks = []; let total = 0;
+  req.on('data', c => {
+    total += c.length;
+    if (total > 10_000) { req.destroy(); return; }
+    chunks.push(c);
+  });
+  req.on('end', async () => {
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+    catch { return jsonResponse(res, 400, { error: 'Invalid JSON body' }); }
+
+    const email = String(body.email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) {
+      return jsonResponse(res, 400, { error: 'Valid email required' });
+    }
+    const releaseId = String(body.releaseId || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,60}$/.test(releaseId)) {
+      return jsonResponse(res, 400, { error: 'releaseId required (from the release install link)' });
+    }
+
+    try {
+      const token = await getAccessToken();
+      const data = JSON.stringify({ testerEmails: [email] });
+      const apiPath = `/v1/projects/${APPDIST_PROJECT}/apps/${APPDIST_APP}` +
+                      `/releases/${releaseId}:distribute`;
+      const result = await new Promise((resolve, reject) => {
+        const r = https.request({
+          hostname: 'firebaseappdistribution.googleapis.com',
+          path: apiPath, method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(data)
+          },
+          timeout: 30_000
+        }, up => {
+          const c = []; up.on('data', d => c.push(d));
+          up.on('end', () => {
+            const txt = Buffer.concat(c).toString('utf8');
+            if (up.statusCode >= 400) return reject(new Error(`AppDistribution ${up.statusCode}: ${txt.slice(0, 300)}`));
+            try { resolve(txt ? JSON.parse(txt) : {}); } catch { resolve({}); }
+          });
+        });
+        r.on('timeout', () => { r.destroy(); reject(new Error('App Distribution request timeout')); });
+        r.on('error', reject);
+        r.write(data); r.end();
+      });
+      jsonResponse(res, 200, { ok: true, data: { invited: email, releaseId, result } });
+    } catch (e) {
+      jsonResponse(res, 502, { error: e.message });
+    }
+  });
+  req.on('error', e => jsonResponse(res, 400, { error: e.message }));
+}
+
 const server = http.createServer((req, res) => {
   try {
     const url = decodeURI((req.url || '/').split('?')[0]);
@@ -466,6 +530,9 @@ const server = http.createServer((req, res) => {
       });
     }
     if (url === '/api/storage/upload') return handleStorageUpload(req, res);
+
+    // Firebase App Distribution tester invite (real email via Firebase)
+    if (url === '/api/appdist/invite') return handleAppDistInvite(req, res);
 
     // Static
     const rel = path.normalize(url).replace(/^([/\\])+/, '');

@@ -360,7 +360,7 @@
             <label>Send to a tester by email</label>
             <div style="display:flex;gap:8px;">
               <input v-model="shareEmail" type="email" placeholder="tester@example.com" style="flex:1;" @keydown.enter.prevent="sendShareEmail" />
-              <button class="apk-btn primary" :disabled="!shareEmail" @click="sendShareEmail"><span class="material-icons">send</span> Send</button>
+              <button class="apk-btn primary" :disabled="!shareEmail || shareSending" @click="sendShareEmail"><span class="material-icons">{{ shareSending ? 'hourglass_top' : 'send' }}</span> {{ shareSending ? 'Sending…' : 'Send' }}</button>
             </div>
           </div>
           <p style="font-size:12px;color:var(--text-muted);line-height:1.5;">
@@ -423,7 +423,7 @@ const DEV_SERVER = (() => {
   return 'http://localhost:3003'
 })()
 
-import { value } from '../services/db.js'
+import { value, proxyBase } from '../services/db.js'
 
 export default {
   name: 'ApkManagement',
@@ -443,6 +443,7 @@ export default {
       deleteTarget: null,
       shareTarget: null,
       shareEmail: '',
+      shareSending: false,
       // Pipeline state
       pipelineRunning: false,
       pipelineBuildId: null,
@@ -913,17 +914,38 @@ export default {
         this.showToast('Copy failed — select and copy the link manually', 'error')
       }
     },
-    sendShareEmail() {
+    async sendShareEmail() {
       const b = this.shareTarget
-      if (!this.shareEmail) return
-      const subject = encodeURIComponent(`Install BillSense ${b.version} (test build)`)
-      const body = encodeURIComponent(
-        `You're invited to test BillSense v${b.version}.\n\n` +
-        `Install link (open on your Android device, signed in as a registered tester):\n${b.downloadUrl}\n\n` +
-        `If it doesn't open, you may need to be added as a tester in Firebase App Distribution.`
-      )
-      window.location.href = `mailto:${this.shareEmail}?subject=${subject}&body=${body}`
-      this.showToast('Opening your email app…', 'success')
+      if (!this.shareEmail || this.shareSending) return
+      // Firebase App Distribution release id from the install link
+      const m = String(b.downloadUrl || '').match(/\/releases\/([A-Za-z0-9_-]+)/)
+      if (!m) {
+        // No App Distribution release for this build — fall back to a mailto draft.
+        const subject = encodeURIComponent(`Install BillSense ${b.version} (test build)`)
+        const body = encodeURIComponent(
+          `You're invited to test BillSense v${b.version}.\n\n` +
+          `Install link:\n${b.downloadUrl || '(no link recorded)'}`
+        )
+        window.location.href = `mailto:${this.shareEmail}?subject=${subject}&body=${body}`
+        this.showToast('No Firebase release for this build — opening your email app instead', 'error', 4000)
+        return
+      }
+      this.shareSending = true
+      try {
+        const r = await fetch(`${proxyBase()}/api/appdist/invite`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: this.shareEmail.trim(), releaseId: m[1] })
+        })
+        const j = await r.json().catch(() => ({}))
+        if (!r.ok || j.ok === false) throw new Error(j.error || `HTTP ${r.status}`)
+        this.showToast(`Invite sent — Firebase emailed ${this.shareEmail} the install link`, 'success', 5000)
+        this.shareEmail = ''
+      } catch (e) {
+        this.showToast(`Invite failed: ${e.message}`, 'error', 6000)
+      } finally {
+        this.shareSending = false
+      }
     },
     openInstall(build) {
       window.open(build.downloadUrl, '_blank', 'noopener')
