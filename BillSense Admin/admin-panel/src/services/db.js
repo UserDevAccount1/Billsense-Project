@@ -83,6 +83,61 @@ export async function update(path, fields) {
   return dbCall('patch', { path, data: fields })
 }
 
+// Upload a local image file through the proxy into Firebase Storage.
+// Compresses client-side (canvas, max edge 1280px, JPEG quality stepping)
+// so the payload stays inside the proxy's ~1MB body cap, then returns the
+// public download-token URL (works in the panel <img> and in the app's Glide).
+const MAX_BASE64 = 950_000
+export async function uploadImage(folder, key, file, onState) {
+  if (!file || !file.type.startsWith('image/')) throw new Error('Pick an image file')
+  onState && onState('Compressing…')
+
+  const img = await new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const el = new Image()
+    el.onload = () => { URL.revokeObjectURL(url); resolve(el) }
+    el.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image file')) }
+    el.src = url
+  })
+
+  const MAX_EDGE = 1280
+  const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  let dataBase64 = null
+  for (const q of [0.8, 0.7, 0.6, 0.5]) {
+    const dataUrl = canvas.toDataURL('image/jpeg', q)
+    const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    if (b64.length <= MAX_BASE64) { dataBase64 = b64; break }
+  }
+  if (!dataBase64) throw new Error('Image is too large even after compression — try a smaller image')
+
+  onState && onState('Uploading…')
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 60000)
+  try {
+    const r = await fetch(`${proxyBase()}/api/storage/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, key, contentType: 'image/jpeg', dataBase64 }),
+      signal: ctrl.signal
+    })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok || j.ok === false || !j.data?.url) {
+      throw new Error(j.error || `upload failed: HTTP ${r.status}`)
+    }
+    return j.data.url
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Upload timed out — check your connection')
+    throw e
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 // Firebase-style push id: 20-char, chronologically ordered, collision-resistant.
 // Lets us create children with the same key shape the mobile app generates,
 // using only the proxy's PATCH op (no server-side push needed).

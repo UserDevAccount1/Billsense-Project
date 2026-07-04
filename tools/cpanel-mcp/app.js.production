@@ -17,6 +17,7 @@ const ROOT     = path.join(__dirname, 'public');
 const KEY_FILE = path.join(__dirname, '.gemini-key');
 const SA_FILE  = path.join(__dirname, '.firebase-sa.json');
 const RTDB     = 'bill-sense-aec6b-default-rtdb.firebaseio.com';
+const BUCKET   = 'bill-sense-aec6b.firebasestorage.app';
 
 // Read the Gemini key once at startup. If the file is missing, the proxy
 // returns 503 — the static dashboard still works, just no AI features.
@@ -51,7 +52,7 @@ function getAccessToken() {
     const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
     const claims = b64url(JSON.stringify({
       iss: SA.client_email,
-      scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
+      scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/devstorage.read_write',
       aud: 'https://oauth2.googleapis.com/token',
       iat: now,
       exp: now + 3600
@@ -310,6 +311,106 @@ function handleDb(req, res, op) {
   req.on('error', e => jsonResponse(res, 400, { error: e.message }));
 }
 
+// POST /api/storage/upload  body: { folder, key, contentType, dataBase64 }
+// Uploads an image to Firebase Storage with a download token and returns the
+// public token URL (same mechanism the ML server uses for annotated images).
+const UPLOAD_FOLDERS = new Set(['trivia', 'tutorials']);
+const UPLOAD_TYPES = new Map([
+  ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/webp', '.webp']
+]);
+function handleStorageUpload(req, res) {
+  if (req.method !== 'POST') return jsonResponse(res, 405, { error: 'POST only' });
+  if (!SA) return jsonResponse(res, 503, { error: 'Server has no Firebase service account configured.' });
+
+  const chunks = []; let total = 0; let tooLarge = false;
+  req.on('data', c => {
+    if (tooLarge) return;
+    total += c.length;
+    if (total > 1_400_000) {   // ~1.4 MB JSON cap (~1 MB decoded image)
+      tooLarge = true;
+      jsonResponse(res, 413, { error: 'Image too large — max ~1MB after compression.' });
+      req.destroy();
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on('end', async () => {
+    if (tooLarge) return;
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+    catch { return jsonResponse(res, 400, { error: 'Invalid JSON body' }); }
+
+    const folder = String(body.folder || '');
+    if (!UPLOAD_FOLDERS.has(folder)) {
+      return jsonResponse(res, 400, { error: `folder must be one of: ${[...UPLOAD_FOLDERS].join(', ')}` });
+    }
+    const contentType = String(body.contentType || '');
+    if (!UPLOAD_TYPES.has(contentType)) {
+      return jsonResponse(res, 400, { error: `contentType must be one of: ${[...UPLOAD_TYPES.keys()].join(', ')}` });
+    }
+    const key = String(body.key || 'img').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'img';
+    let bytes;
+    try { bytes = Buffer.from(String(body.dataBase64 || ''), 'base64'); }
+    catch { return jsonResponse(res, 400, { error: 'Invalid base64 data' }); }
+    if (!bytes.length) return jsonResponse(res, 400, { error: 'dataBase64 required' });
+    if (bytes.length > 1_000_000) {
+      return jsonResponse(res, 413, { error: 'Image too large — max 1MB after compression.' });
+    }
+
+    const storagePath = `content/${folder}/${key}_${Date.now()}${UPLOAD_TYPES.get(contentType)}`;
+    const downloadToken = crypto.randomUUID
+      ? crypto.randomUUID()
+      : crypto.randomBytes(16).toString('hex');
+
+    try {
+      const token = await getAccessToken();
+      const meta = JSON.stringify({
+        name: storagePath,
+        contentType,
+        metadata: { firebaseStorageDownloadTokens: downloadToken }
+      });
+      const boundary = 'bs_upload_' + crypto.randomBytes(8).toString('hex');
+      const payload = Buffer.concat([
+        Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
+                    `--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`),
+        bytes,
+        Buffer.from(`\r\n--${boundary}--`)
+      ]);
+
+      const result = await new Promise((resolve, reject) => {
+        const r = https.request({
+          hostname: 'storage.googleapis.com',
+          path: `/upload/storage/v1/b/${BUCKET}/o?uploadType=multipart`,
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+            'Content-Length': payload.length
+          },
+          timeout: 30_000
+        }, up => {
+          const c = []; up.on('data', d => c.push(d));
+          up.on('end', () => {
+            const txt = Buffer.concat(c).toString('utf8');
+            if (up.statusCode >= 400) return reject(new Error(`Storage ${up.statusCode}: ${txt.slice(0, 200)}`));
+            try { resolve(JSON.parse(txt)); } catch { resolve({}); }
+          });
+        });
+        r.on('timeout', () => { r.destroy(); reject(new Error('Storage upload timeout')); });
+        r.on('error', reject);
+        r.write(payload); r.end();
+      });
+
+      const url = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/` +
+                  `${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`;
+      jsonResponse(res, 200, { ok: true, data: { url, path: storagePath, size: bytes.length, generation: result.generation } });
+    } catch (e) {
+      jsonResponse(res, 502, { error: e.message });
+    }
+  });
+  req.on('error', () => { /* client aborted (e.g. after 413) — response already sent */ });
+}
+
 const server = http.createServer((req, res) => {
   try {
     const url = decodeURI((req.url || '/').split('?')[0]);
@@ -356,6 +457,15 @@ const server = http.createServer((req, res) => {
     if (url === '/api/db/get')    return handleDb(req, res, 'get');
     if (url === '/api/db/patch')  return handleDb(req, res, 'patch');
     if (url === '/api/db/delete') return handleDb(req, res, 'delete');
+
+    // Firebase Storage upload proxy (admin panel content images)
+    if (url === '/api/storage/health') {
+      return jsonResponse(res, 200, {
+        ok: true, saConfigured: !!SA, bucket: BUCKET,
+        folders: [...UPLOAD_FOLDERS]
+      });
+    }
+    if (url === '/api/storage/upload') return handleStorageUpload(req, res);
 
     // Static
     const rel = path.normalize(url).replace(/^([/\\])+/, '');

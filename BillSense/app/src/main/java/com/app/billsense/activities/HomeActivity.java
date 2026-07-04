@@ -158,6 +158,10 @@ public class HomeActivity extends AppCompatActivity implements PermissionManager
             startActivity(new Intent(HomeActivity.this, SearchActivity.class));
         });
 
+        binding.learnCard.setOnClickListener(view -> {
+            startActivity(new Intent(HomeActivity.this, EducationalContentActivity.class));
+        });
+
         binding.viewAllScanHistoryBtn.setOnClickListener(view -> {
             startActivity(new Intent(HomeActivity.this, ScanHistoryActivity.class));
         });

@@ -74,6 +74,7 @@ public class TriviaFragment extends Fragment {
                 triviaArrayList.clear();
                 for (DataSnapshot snapshot : dataSnapshot.getChildren()){
                     Trivia trivia = snapshot.getValue(Trivia.class);
+                    if (trivia == null) continue;
                     triviaArrayList.add(trivia);
                 }
                 // Sort the list

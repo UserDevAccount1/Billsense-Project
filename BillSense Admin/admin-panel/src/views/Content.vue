@@ -64,9 +64,18 @@
             <option value="video">Video</option>
           </select>
         </label>
-        <label v-if="form.mediaType==='image'">Image URL
-          <input v-model="form.downloadImageUrl" type="url" placeholder="https://…/image.jpg" />
-        </label>
+        <template v-if="form.mediaType==='image'">
+          <label>Image
+            <input type="file" accept="image/*" @change="onFilePicked" :disabled="saving" />
+            <span class="hint">Picked from your computer — uploaded to Firebase Storage on save.</span>
+          </label>
+          <img v-if="form.previewUrl || form.downloadImageUrl"
+               :src="form.previewUrl || form.downloadImageUrl"
+               class="mpreview" @error="e=>e.target.style.display='none'" />
+          <label>…or paste a direct image URL (optional fallback)
+            <input v-model="form.downloadImageUrl" type="url" placeholder="https://…/image.jpg" :disabled="!!pendingFile" />
+          </label>
+        </template>
         <label v-if="form.mediaType==='video'">Video URL
           <input v-model="form.downloadVideoUrl" type="url" placeholder="https://…/video.mp4" />
         </label>
@@ -74,7 +83,7 @@
           <button class="ghost" @click="closeForm" :disabled="saving">Cancel</button>
           <button class="primary" @click="save" :disabled="saving || !form.title.trim()">
             <span v-if="saving" class="material-icons spin">progress_activity</span>
-            {{ form.key ? 'Save changes' : 'Add' }}
+            {{ saving && uploadState ? uploadState : (form.key ? 'Save changes' : 'Add') }}
           </button>
         </div>
       </div>
@@ -87,7 +96,7 @@
 </template>
 
 <script>
-import { value, remove, update, pushId } from '../services/db.js'
+import { value, remove, update, pushId, uploadImage } from '../services/db.js'
 
 function nowParts() {
   const d = new Date(), p = n => String(n).padStart(2, '0')
@@ -99,7 +108,7 @@ function nowParts() {
 
 export default {
   name: 'Content',
-  data() { return { tab: 'trivia', loading: true, error: '', trivia: [], tutorials: [], pending: {}, toast: null, form: null, saving: false } },
+  data() { return { tab: 'trivia', loading: true, error: '', trivia: [], tutorials: [], pending: {}, toast: null, form: null, saving: false, pendingFile: null, uploadState: '' } },
   computed: {
     list() { return this.tab === 'trivia' ? this.trivia : this.tutorials },
     rootPath() { return this.tab === 'trivia' ? 'Trivia' : 'Tutorials' }
@@ -115,47 +124,78 @@ export default {
         this.trivia = norm(tr); this.tutorials = norm(tu)
       } catch (e) { this.error = e.message } finally { this.loading = false }
     },
-    notify(m, t = 'ok') { this.toast = { msg: m, type: t }; setTimeout(() => this.toast = null, 3000) },
-    openAdd() { this.form = { key: null, title: '', description: '', mediaType: 'text', downloadImageUrl: '', downloadVideoUrl: '' } },
+    notify(m, t = 'ok', ms = 3000) { this.toast = { msg: m, type: t }; setTimeout(() => this.toast = null, ms) },
+    openAdd() {
+      this.pendingFile = null
+      // Generate the push key up front so an uploaded image gets a stable filename.
+      this.form = { key: null, _newKey: pushId(), title: '', description: '', mediaType: 'text', downloadImageUrl: '', downloadVideoUrl: '', previewUrl: '' }
+    },
     openEdit(it) {
+      this.pendingFile = null
       this.form = {
         key: it._key,
         title: it.title || '',
         description: it.description || '',
         mediaType: (it.mediaType && it.mediaType !== 'none') ? it.mediaType : 'text',
         downloadImageUrl: it.downloadImageUrl || it.mediaUrl || '',
-        downloadVideoUrl: it.downloadVideoUrl || ''
+        downloadVideoUrl: it.downloadVideoUrl || '',
+        previewUrl: ''
       }
     },
-    closeForm() { if (!this.saving) this.form = null },
+    onFilePicked(e) {
+      const file = e.target.files && e.target.files[0]
+      if (!file) return
+      if (!file.type.startsWith('image/')) { this.notify('Please pick an image file', 'err'); return }
+      if (this.form.previewUrl) URL.revokeObjectURL(this.form.previewUrl)
+      this.pendingFile = file
+      this.form.previewUrl = URL.createObjectURL(file)
+      this.form.mediaType = 'image'
+    },
+    closeForm() {
+      if (this.saving) return
+      if (this.form && this.form.previewUrl) URL.revokeObjectURL(this.form.previewUrl)
+      this.pendingFile = null
+      this.form = null
+    },
     async save() {
       const f = this.form
       if (!f.title.trim()) return
+      if (f.mediaType === 'image' && !this.pendingFile && !(f.downloadImageUrl || '').trim()) {
+        this.notify('Pick an image file or paste an image URL', 'err'); return
+      }
       this.saving = true
       const root = this.rootPath
-      // Match the mobile app's model fields exactly (Trivia.java / Tutorials.java).
-      const fields = {
-        title: f.title.trim(),
-        description: f.description.trim(),
-        mediaType: f.mediaType,
-        downloadImageUrl: f.mediaType === 'image' ? (f.downloadImageUrl || '').trim() : '',
-        downloadVideoUrl: f.mediaType === 'video' ? (f.downloadVideoUrl || '').trim() : ''
-      }
+      const key = f.key || f._newKey || pushId()
       try {
+        // Upload the picked file first — the record is only written with a working URL.
+        if (f.mediaType === 'image' && this.pendingFile) {
+          const folder = this.tab === 'trivia' ? 'trivia' : 'tutorials'
+          f.downloadImageUrl = await uploadImage(folder, key, this.pendingFile, s => this.uploadState = s)
+        }
+        this.uploadState = 'Saving…'
+        // Match the mobile app's model fields exactly (Trivia.java / Tutorials.java).
+        const fields = {
+          title: f.title.trim(),
+          description: f.description.trim(),
+          mediaType: f.mediaType,
+          downloadImageUrl: f.mediaType === 'image' ? (f.downloadImageUrl || '').trim() : '',
+          downloadVideoUrl: f.mediaType === 'video' ? (f.downloadVideoUrl || '').trim() : ''
+        }
         if (f.key) {
           // Edit existing — merge changed fields, keep id/date/time.
           await update(`${root}/${f.key}`, fields)
           this.notify('Saved')
         } else {
-          // Create — generate a Firebase-style key, store id=key + timestamp.
-          const key = pushId()
+          // Create — use the pre-generated Firebase-style key, store id=key + timestamp.
           const { date, time } = nowParts()
           await update(`${root}/${key}`, { id: key, ...fields, date, time })
           this.notify('Added')
         }
+        if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+        this.pendingFile = null
         this.form = null
         await this.load()
-      } catch (e) { this.notify(e.message, 'err') } finally { this.saving = false }
+      } catch (e) { this.notify(e.message, 'err', 6000) } finally { this.saving = false; this.uploadState = '' }
     },
     async del(it) {
       if (!confirm(`Delete "${it.title || it._key}"?`)) return
@@ -210,6 +250,9 @@ export default {
 .modal label { display:block; font-size:.8rem; color:var(--text-muted); margin-bottom:.9rem; }
 .modal input, .modal textarea, .modal select { width:100%; margin-top:.35rem; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:var(--text,#fff); padding:.6rem .7rem; font-size:.9rem; font-family:inherit; box-sizing:border-box; }
 .modal textarea { resize:vertical; }
+.modal input[type=file] { padding:.45rem .5rem; cursor:pointer; }
+.hint { display:block; margin-top:.3rem; font-size:.72rem; color:var(--text-muted); opacity:.8; }
+.mpreview { width:100%; max-height:220px; object-fit:contain; border-radius:8px; margin:-.3rem 0 .9rem; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
 .mfoot { display:flex; justify-content:flex-end; gap:.6rem; margin-top:.5rem; }
 .mfoot button { display:flex; align-items:center; gap:.35rem; padding:.55rem 1.1rem; border-radius:8px; font-size:.88rem; cursor:pointer; border:1px solid transparent; }
 .mfoot .ghost { background:none; border-color:rgba(255,255,255,.15); color:var(--text-muted); }
