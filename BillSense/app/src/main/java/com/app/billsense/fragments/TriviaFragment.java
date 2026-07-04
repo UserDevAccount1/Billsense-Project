@@ -20,18 +20,19 @@ import com.app.billsense.adapters.TriviaAdapter;
 import com.app.billsense.databinding.FragmentTriviaBinding;
 import com.app.billsense.interfaces.FBInterface;
 import com.app.billsense.model.Trivia;
-import com.app.billsense.model.Tutorials;
 import com.app.billsense.utils.FBUtils;
-import com.google.firebase.database.DataSnapshot;
+import com.google.gson.Gson;
+
+import org.json.JSONObject;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 
 @RequiresApi(api = Build.VERSION_CODES.O)
 public class TriviaFragment extends Fragment {
@@ -68,54 +69,70 @@ public class TriviaFragment extends Fragment {
                 requireActivity(), LinearLayoutManager.VERTICAL, false));
         triviaAdapter = new TriviaAdapter(requireContext(), triviaArrayList);
         binding.triviaRv.setAdapter(triviaAdapter);
-        fbUtils.getAllDataFromPath(fbUtils.TRIVIA_PATH, new FBInterface.OnFetchDataCallBack() {
+        // Pure REST fetch + Gson — the Firebase SDK get() hangs on some devices
+        // (same pattern as EvidenceHistoryFragment / SupportActivity).
+        fbUtils.fetchJsonFromPath(fbUtils.TRIVIA_PATH, new FBInterface.OnRestJsonFetchCallback() {
             @Override
-            public void onFetchDataSuccess(DataSnapshot dataSnapshot) {
+            public void onJsonFetchSuccess(String jsonBody) {
+                if (!isAdded()) return;
                 triviaArrayList.clear();
-                for (DataSnapshot snapshot : dataSnapshot.getChildren()){
-                    Trivia trivia = snapshot.getValue(Trivia.class);
-                    if (trivia == null) continue;
-                    triviaArrayList.add(trivia);
-                }
-                // Sort the list
-                Collections.sort(triviaArrayList, new Comparator<Trivia>() {
-                    @Override
-                    public int compare(Trivia t1, Trivia t2) {
-                        try {
-                            // Ensure getTutorialDate() and getTutorialTime() return the correct String fields
-                            java.time.LocalDate date1 = java.time.LocalDate.parse(t1.getDate(), DATE_FORMATTER);
-                            LocalTime time1 = LocalTime.parse(t1.getTime(), TIME_FORMATTER);
-                            LocalDateTime dateTime1 = LocalDateTime.of(date1, time1);
-
-                            LocalDate date2 = LocalDate.parse(t2.getDate(), DATE_FORMATTER);
-                            LocalTime time2 = LocalTime.parse(t2.getTime(), TIME_FORMATTER);
-                            LocalDateTime dateTime2 = LocalDateTime.of(date2, time2);
-
-                            // For newest first, compare dateTime2 with dateTime1
-                            return dateTime2.compareTo(dateTime1);
-                        } catch (DateTimeParseException e) {
-                            Log.e("Trivia Fragment", "Error parsing date/time for sorting: " + e.getMessage());
-                            return 0;
-                        }
+                try {
+                    Gson gson = new Gson();
+                    JSONObject json = new JSONObject(jsonBody);
+                    Iterator<String> keys = json.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        Object child = json.opt(key);
+                        if (!(child instanceof JSONObject)) continue;
+                        Trivia trivia = gson.fromJson(child.toString(), Trivia.class);
+                        if (trivia == null) continue;
+                        triviaArrayList.add(trivia);
                     }
-                });
-
+                } catch (Exception e) {
+                    Log.e("Trivia Fragment", "Failed to parse trivia JSON: " + e.getMessage());
+                }
+                sortNewestFirst();
                 triviaAdapter.notifyDataSetChanged();
             }
 
             @Override
-            public void onDataNotFound() {
+            public void onJsonFetchEmpty() {
+                if (!isAdded()) return;
                 triviaArrayList.clear();
                 triviaAdapter.notifyDataSetChanged();
             }
 
             @Override
-            public void onFetchDataFailed(String errorMessage) {
+            public void onJsonFetchFailed(String errorMessage) {
+                if (!isAdded()) return;
+                Log.e("Trivia Fragment", "Failed to fetch trivia: " + errorMessage);
                 triviaArrayList.clear();
                 triviaAdapter.notifyDataSetChanged();
             }
         });
+    }
 
+    private void sortNewestFirst() {
+        Collections.sort(triviaArrayList, new Comparator<Trivia>() {
+            @Override
+            public int compare(Trivia t1, Trivia t2) {
+                try {
+                    LocalDate date1 = LocalDate.parse(t1.getDate(), DATE_FORMATTER);
+                    LocalTime time1 = LocalTime.parse(t1.getTime(), TIME_FORMATTER);
+                    LocalDateTime dateTime1 = LocalDateTime.of(date1, time1);
+
+                    LocalDate date2 = LocalDate.parse(t2.getDate(), DATE_FORMATTER);
+                    LocalTime time2 = LocalTime.parse(t2.getTime(), TIME_FORMATTER);
+                    LocalDateTime dateTime2 = LocalDateTime.of(date2, time2);
+
+                    // For newest first, compare dateTime2 with dateTime1
+                    return dateTime2.compareTo(dateTime1);
+                } catch (Exception e) {
+                    Log.e("Trivia Fragment", "Error parsing date/time for sorting: " + e.getMessage());
+                    return 0;
+                }
+            }
+        });
     }
 
 }

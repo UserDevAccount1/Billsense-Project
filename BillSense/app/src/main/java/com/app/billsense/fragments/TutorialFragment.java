@@ -19,7 +19,9 @@ import com.app.billsense.databinding.FragmentTutorialBinding;
 import com.app.billsense.interfaces.FBInterface;
 import com.app.billsense.model.Tutorials;
 import com.app.billsense.utils.FBUtils;
-import com.google.firebase.database.DataSnapshot;
+import com.google.gson.Gson;
+
+import org.json.JSONObject;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -27,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.Locale;
 
 public class TutorialFragment extends Fragment {
@@ -63,46 +66,64 @@ public class TutorialFragment extends Fragment {
                 requireActivity(), LinearLayoutManager.VERTICAL, false));
         tutorialsAdapter = new TutorialsAdapter(requireContext(), tutorialsArrayList);
         binding.tutorialRv.setAdapter(tutorialsAdapter);
-        fbUtils.getAllDataFromPath(fbUtils.TUTORIAL_PATH, new FBInterface.OnFetchDataCallBack() {
+        // Pure REST fetch + Gson — the Firebase SDK get() hangs on some devices
+        // (same pattern as EvidenceHistoryFragment / SupportActivity).
+        fbUtils.fetchJsonFromPath(fbUtils.TUTORIAL_PATH, new FBInterface.OnRestJsonFetchCallback() {
             @Override
-            public void onFetchDataSuccess(DataSnapshot dataSnapshot) {
+            public void onJsonFetchSuccess(String jsonBody) {
+                if (!isAdded()) return;
                 tutorialsArrayList.clear();
-                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
-                    Tutorials tutorials = snapshot.getValue(Tutorials.class);
-                    if (tutorials == null) continue;
-                    tutorialsArrayList.add(tutorials);
-                }
-                // Sort the list
-                Collections.sort(tutorialsArrayList, new Comparator<Tutorials>() {
-                    @Override
-                    public int compare(Tutorials t1, Tutorials t2) {
-                        try {
-                            String dateTime1Str = t1.getDate() + " " + t1.getTime();
-                            String dateTime2Str = t2.getDate() + " " + t2.getTime();
-                            Date dateTime1 = DATE_TIME_FORMATTER.parse(dateTime1Str);
-                            Date dateTime2 = DATE_TIME_FORMATTER.parse(dateTime2Str);
-                            // For newest first, compare dateTime2 with dateTime1
-                            return dateTime2.compareTo(dateTime1);
-                        } catch (ParseException e) {
-                            Log.e("TutorialFragment", "Error parsing date/time for sorting: " + e.getMessage());
-                            return 0;
-                        }
+                try {
+                    Gson gson = new Gson();
+                    JSONObject json = new JSONObject(jsonBody);
+                    Iterator<String> keys = json.keys();
+                    while (keys.hasNext()) {
+                        String key = keys.next();
+                        Object child = json.opt(key);
+                        if (!(child instanceof JSONObject)) continue;
+                        Tutorials tutorials = gson.fromJson(child.toString(), Tutorials.class);
+                        if (tutorials == null) continue;
+                        tutorialsArrayList.add(tutorials);
                     }
-                });
-
+                } catch (Exception e) {
+                    Log.e("TutorialFragment", "Failed to parse tutorials JSON: " + e.getMessage());
+                }
+                sortNewestFirst();
                 tutorialsAdapter.notifyDataSetChanged();
             }
 
             @Override
-            public void onDataNotFound() {
+            public void onJsonFetchEmpty() {
+                if (!isAdded()) return;
                 tutorialsArrayList.clear();
                 tutorialsAdapter.notifyDataSetChanged();
             }
 
             @Override
-            public void onFetchDataFailed(String errorMessage) {
+            public void onJsonFetchFailed(String errorMessage) {
+                if (!isAdded()) return;
+                Log.e("TutorialFragment", "Failed to fetch tutorials: " + errorMessage);
                 tutorialsArrayList.clear();
                 tutorialsAdapter.notifyDataSetChanged();
+            }
+        });
+    }
+
+    private void sortNewestFirst() {
+        Collections.sort(tutorialsArrayList, new Comparator<Tutorials>() {
+            @Override
+            public int compare(Tutorials t1, Tutorials t2) {
+                try {
+                    String dateTime1Str = t1.getDate() + " " + t1.getTime();
+                    String dateTime2Str = t2.getDate() + " " + t2.getTime();
+                    Date dateTime1 = DATE_TIME_FORMATTER.parse(dateTime1Str);
+                    Date dateTime2 = DATE_TIME_FORMATTER.parse(dateTime2Str);
+                    // For newest first, compare dateTime2 with dateTime1
+                    return dateTime2.compareTo(dateTime1);
+                } catch (ParseException e) {
+                    Log.e("TutorialFragment", "Error parsing date/time for sorting: " + e.getMessage());
+                    return 0;
+                }
             }
         });
     }
