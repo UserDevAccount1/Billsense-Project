@@ -6,3 +6,22 @@ runs/
 *.pt
 __pycache__/
 *.zip
+
+# TFLite export artifacts (staged in GCS, not the repo)
+tflite_out/
+_export_log*.txt
+*_saved_model/
+*.onnx
+calib_subset/
+calibration_image_sample_data*.npy
+calibration_image_sample_data*.zip
+_logcat_offline.txt
+_test_model_download.py
+_export_int8_log.txt
+_test_case_flow.py
+_cleanup_test_cases.py
+_screen*.png
+_test_billy.py
+_publish_final_1515.py
+_logcat*.txt
+_set_scanmode_cloud.py

@@ -102,7 +102,7 @@ except ImportError as e:
 # ----------------------------
 # App initialization
 # ----------------------------
-app = FastAPI(title="BillSense Fake Bill Detection API", version="17.15")
+app = FastAPI(title="BillSense Fake Bill Detection API", version="17.19")
 
 # CORS
 app.add_middleware(
@@ -474,7 +474,7 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
             'is_high_denomination': result_data.get("is_high_denomination", False),
             'currency': 'PHP',
             'model_used': 'Multi-Model Ensemble',
-            'logic_version': '17.15',
+            'logic_version': '17.19',
             'storage_policy': 'with_annotated_images',
             'annotated_image_url': result_data.get("annotated_image_url", ""),
             'image_stored': bool(result_data.get("annotated_image_url"))
@@ -501,11 +501,45 @@ async def store_real_time_scan_result(scan_type: str, result_data: Dict[str, Any
         }
         
         collection_name = collection_map.get(scan_type, "real_time_scans")
-        
-        # Store in Firebase
+
+        # Store in Firebase (Firestore — analytics/history)
         storage_id = firebase_client.store_scan_result(firebase_result, user_id, collection_name)
         print(f"✅ Real-time {scan_type} result stored in Firebase: {storage_id}")
-        
+
+        # ALSO mirror into Realtime Database so the ADMIN dashboard's Scan Reports
+        # (which reads RTDB 'Standard Scan'/'Multi Scan'/'Video Scan' in camelCase)
+        # shows the latest user scans. Without this, scans only landed in Firestore
+        # and the admin never saw anything newer than the last app-written record.
+        try:
+            rtdb_node = {
+                "standard_scan": "Standard Scan",
+                "multi_scan": "Multi Scan",
+                "video_scan": "Video Scan",
+            }.get(scan_type, "Standard Scan")
+            rtdb_record = {
+                "scanId": scan_id,
+                "userId": user_id,
+                "type": scan_type.replace("_scan", "").capitalize(),
+                "timestamp": firebase_result["timestamp"],
+                "denomination": firebase_result["denomination"],
+                "authenticity": firebase_result["authenticity_status"],
+                "isGenuine": firebase_result["is_genuine"],
+                "confidence": firebase_result["confidence"],
+                "coveragePercentage": firebase_result["coverage_percentage"],
+                "detectedFeaturesCount": firebase_result["feature_count"],
+                "totalExpectedFeatures": firebase_result["total_expected_features"],
+                "featuresDetected": firebase_result["features_detected"],
+                "processingTime": firebase_result["processing_time"],
+                "framesProcessed": firebase_result.get("frames_processed", 0),
+                "reasons": firebase_result["reasons"],
+                "isHighDenomination": firebase_result["is_high_denomination"],
+                "annotatedImageUrl": firebase_result["annotated_image_url"],
+                "logicVersion": firebase_result["logic_version"],
+            }
+            firebase_client.store_scan_rtdb(rtdb_node, user_id, scan_id, rtdb_record)
+        except Exception as mirror_err:
+            print(f"⚠️ RTDB mirror skipped: {mirror_err}")
+
         return storage_id
         
     except Exception as e:
@@ -947,9 +981,12 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
                 if lbl.startswith('false_'):
                     # 'false_bill' is the whole-note real/fake guess — it is too noisy and
                     # false-fires on genuine notes, so it must NOT condemn on its own. Only a
-                    # SPECIFIC feature-forgery marker at HIGH confidence (>=0.6) counts as a
-                    # counterfeit signal; this avoids flagging genuine bills as fake.
-                    if lbl != 'false_bill' and conf >= 0.60 and lbl in counterfeit_indicators:
+                    # SPECIFIC feature-forgery marker at HIGH confidence (>=0.75) counts as a
+                    # candidate counterfeit signal. securitycf false-fires the lighting-dependent
+                    # markers on genuine notes, so the high bar here + the corroboration rule in
+                    # evaluate_counterfeit (needs >=2 markers AND weak genuine evidence) together
+                    # stop genuine bills being flagged fake.
+                    if lbl != 'false_bill' and conf >= 0.75 and lbl in counterfeit_indicators:
                         counterfeit_indicators[lbl] = True
                         print(f"  🚩 securitycf FALSE marker: {lbl} ({conf:.2f})")
                     elif conf >= 0.30:
@@ -974,9 +1011,15 @@ async def detect_security_features_parallel(image: np.ndarray, denomination: str
             
             for det in evp_dets:
                 label = det.get('label', '')
+                evp_conf = det.get('confidence', 0)
                 if 'false' in label.lower():
-                    counterfeit_indicators['false_enhanced_value_panel'] = True
-                    print(f"  ⚠️ FALSE EVP detected: {det.get('confidence', 0):.3f}")
+                    # Gate the false-EVP marker at high confidence — a weak EVP false detection
+                    # false-fires on genuine high-denom notes (observed) and must not condemn.
+                    if evp_conf >= 0.75:
+                        counterfeit_indicators['false_enhanced_value_panel'] = True
+                        print(f"  ⚠️ FALSE EVP detected: {evp_conf:.3f}")
+                    else:
+                        print(f"  ℹ️ low-conf false EVP ignored: {evp_conf:.3f}")
                 else:
                     high_denom_features['enhanced_value_panel'] = True
                     print(f"  ✅ Genuine EVP detected: {det.get('confidence', 0):.3f}")
@@ -1317,10 +1360,31 @@ def evaluate_counterfeit(denomination: str, features_result: Dict[str, Any],
         false_markers = [k for k, v in (counterfeit_indicators or {}).items()
                          if v and k != 'false_bill'
                          and not security_features.get(GENUINE_OF.get(k, ''), False)]
-        if false_markers:
+        # CORROBORATION RULE (v17.17): the securitycf/EVP false_* markers are noisy and
+        # false-fire on genuine notes — especially the lighting-dependent ones (watermark,
+        # see-through, EVP) that a single front-lit photo cannot independently verify. So a
+        # single marker NEVER condemns, and any number of markers is overridden when the note
+        # independently shows real, hard-to-fake security features. We only call COUNTERFEIT
+        # when the forgery signal is corroborated AND the genuine evidence is weak:
+        #   (a) >=2 DISTINCT condemning markers, AND
+        #   (b) fewer than 2 hard security features actually detected.
+        # This matches the principle that we never assume counterfeit from one unverifiable
+        # feature; a real fake shows multiple forgery markers and lacks genuine security features.
+        HARD_FEATURES = {'watermark', 'see_through_mark', 'security_thread', 'concealed_value',
+                         'shadow_thread', 'uv_thread', 'optically_variable_ink', 'ovd',
+                         'enhanced_value_panel'}
+        hard_genuine = sum(1 for f in HARD_FEATURES if security_features.get(f, False))
+        corroborated_forgery = len(false_markers) >= 2 and hard_genuine < 2
+        if corroborated_forgery:
             is_genuine = False
             pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
-            reasons.append(f"Detected counterfeit marker(s): {pretty} — strong counterfeit indicator.")
+            reasons.append(f"Multiple counterfeit markers ({pretty}) with no genuine security features verified — strong counterfeit indicator.")
+        elif false_markers:
+            # Markers fired but not corroborated (single marker, or the note shows real
+            # security features) → do NOT condemn; just note it lowers confidence.
+            is_genuine = True
+            pretty = ', '.join(sorted(m.replace('false_', '').replace('_', ' ') for m in false_markers))
+            reasons.append(f"Possible marker(s) ({pretty}) flagged but not corroborated — {hard_genuine} genuine security feature(s) verified, consistent with a genuine note. Use Multi-Scan to confirm.")
         elif (not is_high_denom) and security_features.get('enhanced_value_panel', False):
             is_genuine = False
             reasons.append("Enhanced value panel present on a low-denomination note (should not be there).")
@@ -1423,17 +1487,13 @@ def combine_features_across_images(all_features: List[Dict[str, bool]]) -> Dict[
     if not all_features:
         return {}
     
-    # Initialize with all possible features set to False
+    # Initialize with the FULL feature set set to False (union across frames).
     combined = {
-        'concealed_value': False,
-        'security_thread': False,
-        'serial_number': False,
-        'value': False,
-        'watermark': False,
-        'see_through_mark': False,
-        'optically_variable_ink': False,
-        'ovd': False,
-        'enhanced_value_panel': False
+        'value': False, 'serial_number': False, 'security_thread': False, 'concealed_value': False,
+        'watermark': False, 'value_watermark': False, 'see_through_mark': False, 'uv_thread': False,
+        'symbol_of_nature': False, 'shadow_thread': False,
+        'optically_variable_ink': False, 'optically_variable_thread': False, 'ovd': False,
+        'enhanced_value_panel': False,
     }
     
     # Update with detected features from each image
@@ -1442,8 +1502,26 @@ def combine_features_across_images(all_features: List[Dict[str, bool]]) -> Dict[
             for feature, detected in features.items():
                 if detected and feature in combined:
                     combined[feature] = True
-    
+
     return combined
+
+def persistent_counterfeit_markers(marker_dicts: List[Dict[str, bool]]) -> Dict[str, bool]:
+    """Deep-scan rule: a forgery marker only counts if it PERSISTS across frames.
+    A one-off spurious false_* on a single frame must NOT condemn a genuine note —
+    we can't assume counterfeit because one feature flickered. A marker must fire in
+    >=2 frames AND in >=40% of observed frames to be treated as a real forgery signal.
+    Returns a counterfeit_indicators-style dict ({marker: True}) of the persistent ones."""
+    if not marker_dicts:
+        return {}
+    total = len(marker_dicts)
+    counts: Dict[str, int] = {}
+    for md in marker_dicts:
+        if md:
+            for k, v in md.items():
+                if v:
+                    counts[k] = counts.get(k, 0) + 1
+    threshold = max(2, int(round(0.4 * total)))
+    return {k: True for k, c in counts.items() if c >= threshold}
 
 def extract_best_frame_from_video(video_path: str) -> np.ndarray:
     """Extract the best frame from video based on quality and feature detection"""
@@ -1538,6 +1616,7 @@ async def real_time_standard_scan(websocket: WebSocket):
         accumulated_results = {
             "denominations": [],
             "features": [],
+            "counterfeit_markers": [],
             "authenticity_results": []
         }
         
@@ -1563,17 +1642,23 @@ async def real_time_standard_scan(websocket: WebSocket):
                     if accumulated_results["denominations"]:
                         final_denomination = get_consensus_denomination(accumulated_results["denominations"])
                         combined_features = combine_features_across_images(accumulated_results["features"])
-                        
-                        # Create final authenticity evaluation
+                        final_high = is_high_denomination(final_denomination)
+                        # Persistent forgery markers from the whole scan (deep-scan rule) — NOT a
+                        # hardcoded empty dict, so a real fake actually gets caught at completion.
+                        final_markers = persistent_counterfeit_markers(accumulated_results["counterfeit_markers"])
+                        final_detected = sum(1 for v in combined_features.values() if v) if combined_features else 0
+                        final_total = 9 if final_high else 6
+
+                        # Create final authenticity evaluation from accumulated evidence
                         features_result = {
                             "security_features": combined_features,
-                            "counterfeit_indicators": {"false_enhanced_value_panel": False},
-                            "is_high_denomination": is_high_denomination(final_denomination),
-                            "total_expected_features": 9 if is_high_denomination(final_denomination) else 6,
-                            "detected_features_count": sum(combined_features.values()) if combined_features else 0,
-                            "coverage_percentage": (sum(combined_features.values()) / (9 if is_high_denomination(final_denomination) else 6)) * 100 if combined_features else 0
+                            "counterfeit_indicators": final_markers,
+                            "is_high_denomination": final_high,
+                            "total_expected_features": final_total,
+                            "detected_features_count": final_detected,
+                            "coverage_percentage": min(100.0, (final_detected / final_total) * 100) if final_total else 0
                         }
-                        
+
                         final_authenticity = evaluate_counterfeit(final_denomination, features_result)
                         
                         # Create annotated image from best frame
@@ -1688,29 +1773,59 @@ async def real_time_standard_scan(websocket: WebSocket):
                             feature_dict = {feature: True for feature in result["detected_features"]}
                         
                         accumulated_results["features"].append(feature_dict)
-                        
+                        accumulated_results["counterfeit_markers"].append(result.get("counterfeit_indicators", {}))
+
                         if result.get("authenticity"):
                             accumulated_results["authenticity_results"].append(result["authenticity"])
-                        
-                        # Send real-time results with ALL data simultaneously
+
+                        # --- DEEP ACCUMULATION (v17.16) ---
+                        # The longer / steadier / closer the scan, the more evidence we gather.
+                        # Genuine features accumulate as a UNION across frames (a watermark seen
+                        # in ANY frame counts), while forgery markers must PERSIST across frames
+                        # before they condemn — one spurious false_* frame is washed out. So the
+                        # live verdict reflects the BEST accumulated evidence, not a single frame.
+                        acc_denom = get_consensus_denomination(accumulated_results["denominations"])
+                        acc_features = combine_features_across_images(accumulated_results["features"])
+                        acc_high = is_high_denomination(acc_denom)
+                        acc_markers = persistent_counterfeit_markers(accumulated_results["counterfeit_markers"])
+                        acc_detected = sorted([f for f, v in acc_features.items() if v])
+                        acc_count = len(acc_detected)
+                        # Stable denominator from the accumulated denomination (NOT the per-frame
+                        # total, which bounces frame-to-frame and breaks monotonic coverage). The
+                        # union count is non-decreasing, so coverage now only ever climbs.
+                        acc_total = 9 if acc_high else 6
+                        acc_coverage = round(min(100.0, (acc_count / acc_total) * 100), 1) if acc_total else 0
+                        acc_features_result = {
+                            "security_features": acc_features,
+                            "counterfeit_indicators": acc_markers,
+                            "is_high_denomination": acc_high,
+                            "total_expected_features": acc_total,
+                            "detected_features_count": acc_count,
+                            "coverage_percentage": acc_coverage,
+                        }
+                        acc_quality = quality_metrics.get("overall_quality") if isinstance(quality_metrics, dict) else None
+                        acc_auth = evaluate_counterfeit(acc_denom, acc_features_result, overall_quality=acc_quality)
+
+                        # Send real-time results — ACCUMULATED across the whole scan so far
                         await websocket.send_json({
                             "status": "analyzing",
                             "frame_number": frame_count,
-                            "message": f"Real-time detection - Frame {frame_count}",
-                            "denomination": result.get("denomination", "UNKNOWN"),
-                            "features_detected": result.get("detected_features", []),
-                            "feature_count": result.get("feature_count", 0),
-                            "total_expected_features": result.get("total_expected_features", 0),
-                            "coverage_percentage": result.get("coverage_percentage", 0),
-                            "confidence_score": result.get("confidence_score", 0),
-                            "authenticity": result.get("authenticity", {}).get("status", "UNKNOWN"),
-                            "is_genuine": result.get("authenticity", {}).get("is_genuine", False),
-                            "is_high_denomination": result.get("is_high_denomination", False),
-                            "has_false_evp": result.get("has_false_evp", False),
+                            "message": f"Deep analysis - {acc_count}/{acc_total} features verified over {frame_count} frames",
+                            "denomination": acc_denom,
+                            "features_detected": acc_detected,
+                            "feature_count": acc_count,
+                            "total_expected_features": acc_total,
+                            "coverage_percentage": acc_coverage,
+                            "confidence_score": acc_auth.get("authenticity_score", acc_auth.get("confidence_score", 0)),
+                            "authenticity": acc_auth.get("status", "UNKNOWN"),
+                            "is_genuine": acc_auth.get("is_genuine", False),
+                            "is_high_denomination": acc_high,
+                            "has_false_evp": acc_markers.get("false_enhanced_value_panel", False),
+                            "frame_features": result.get("detected_features", []),
                             "quality_metrics": quality_metrics,
                             "quality_feedback": quality_check["feedback"] if not quality_check["is_acceptable"] else [],
                             "processing_mode": "parallel",
-                            "recommendation": "Position bill to detect more features, then press Complete Scan"
+                            "recommendation": "Hold steady and move closer to verify more features, then press Complete Scan"
                         })
                             
                     except Exception as frame_error:
@@ -2308,7 +2423,7 @@ async def process_video_scan_completion(websocket: WebSocket, scan_state: Dict, 
 # ----------------------------
 
 @app.post("/api/standard-scan")
-async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
+async def standard_scan(file: UploadFile = File(...), user_id: str = Form("anonymous")):
     """Standard scan endpoint with PARALLEL processing"""
     start_time = time.time()
     
@@ -2408,7 +2523,7 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
             "total_expected_features": result.get("total_expected_features", 6),
             "number_mapping": NUMBER_TO_FEATURE_MAPPING,
             "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-            "logic_version": "17.15",
+            "logic_version": "17.19",
             "processing_time": processing_time,
             "annotated_image_url": annotated_image_url,
             "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2421,7 +2536,33 @@ async def standard_scan(file: UploadFile = File(...), user_id: str = "anonymous"
         print("=" * 60)
         print("✅ STANDARD SCAN COMPLETED SUCCESSFULLY (PARALLEL)")
         print("=" * 60)
-        
+
+        # Mirror into RTDB 'Standard Scan' so the admin dashboard sees photo scans too.
+        try:
+            if FIREBASE_AVAILABLE:
+                auth = result.get("authenticity", {}) or {}
+                firebase_client.store_scan_rtdb("Standard Scan", user_id, scan_id, {
+                    "scanId": scan_id,
+                    "userId": user_id,
+                    "type": "Standard",
+                    "timestamp": final_result["timestamp"],
+                    "denomination": final_result.get("denomination", "UNKNOWN"),
+                    "authenticity": auth.get("status", "UNKNOWN"),
+                    "isGenuine": auth.get("is_genuine", False),
+                    "confidence": auth.get("confidence", "LOW"),
+                    "coveragePercentage": final_result.get("coverage_percentage", 0),
+                    "detectedFeaturesCount": final_result.get("detected_features_count", 0),
+                    "totalExpectedFeatures": final_result.get("total_expected_features", 6),
+                    "featuresDetected": result.get("detected_features", []),
+                    "reasons": auth.get("reasons", []),
+                    "isHighDenomination": final_result.get("is_high_denomination", False),
+                    "annotatedImageUrl": annotated_image_url,
+                    "processingTime": processing_time,
+                    "logicVersion": "17.19",
+                })
+        except Exception as mirror_err:
+            print(f"⚠️ RTDB mirror (REST standard) skipped: {mirror_err}")
+
         return JSONResponse(final_result)
         
     except Exception as e:
@@ -2498,7 +2639,7 @@ async def billy_health():
         "documents": ["Thesis (Canutab et al.)", "Currency-Detection documentation", "Panel comments"],
         "guardrails": ["No code generation", "No off-topic", "Educational-only law",
                        "No counterfeiting playbook", "Never invent facts"],
-        "chunks": 0, "faiss_ready": False, "logic_version": "17.15",
+        "chunks": 0, "faiss_ready": False, "logic_version": "17.19",
     }
     try:
         from billy_rag import billy_rag
@@ -2593,7 +2734,7 @@ async def billy_chat(request: Request):
 # ----------------------------
 
 @app.post("/api/multi-scan")
-async def multi_scan(files: List[UploadFile] = File(...), user_id: str = "anonymous"):
+async def multi_scan(files: List[UploadFile] = File(...), user_id: str = Form("anonymous")):
     """Multi-angle scan endpoint with PARALLEL processing"""
     start_time = time.time()
     
@@ -2759,7 +2900,7 @@ async def multi_scan(files: List[UploadFile] = File(...), user_id: str = "anonym
 # ----------------------------
 
 @app.post("/api/video-scan")
-async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
+async def video_scan(file: UploadFile = File(...), user_id: str = Form("anonymous")):
     """Video scan endpoint with PARALLEL processing"""
     start_time = time.time()
     
@@ -2829,7 +2970,7 @@ async def video_scan(file: UploadFile = File(...), user_id: str = "anonymous"):
                 "total_expected_features": result.get("total_expected_features", 6),
                 "number_mapping": NUMBER_TO_FEATURE_MAPPING,
                 "model_info": "Multi-Model Ensemble (6 models) - PARALLEL",
-                "logic_version": "17.15",
+                "logic_version": "17.19",
                 "processing_time": processing_time,
                 "annotated_image_url": annotated_image_url,
                 "firebase_status": "stored" if FIREBASE_AVAILABLE else "dummy_mode",
@@ -2874,7 +3015,7 @@ async def health_check():
         "status": "healthy",
         "models_loaded": model_loader.loaded,
         "firebase_available": FIREBASE_AVAILABLE,
-        "api_version": "17.15",
+        "api_version": "17.19",
         "main_logic": "Multi-Model Ensemble with PARALLEL REAL-TIME Detection",
         "scan_types": ["standard_scan", "multi_scan", "video_scan", "real_time"],
         "real_time_endpoints": [

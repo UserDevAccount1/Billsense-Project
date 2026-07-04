@@ -115,14 +115,14 @@ public class MLSettingsActivity extends AppCompatActivity {
     private boolean isPackageInstalled() {
         File modelsDir = new File(getFilesDir(), "tflite_models");
         if (!modelsDir.exists()) return false;
-        File counterfeit = new File(modelsDir, "counterfeit_best_float32.tflite");
-        File security = new File(modelsDir, "security_best_int8.tflite");
+        File denomination = new File(modelsDir, "denomination2_int8.tflite");
+        File securitycf = new File(modelsDir, "securitycf_int8.tflite");
         // Check both exist AND have real content (> 1MB each)
-        boolean installed = counterfeit.exists() && counterfeit.length() > 1_000_000
-                && security.exists() && security.length() > 1_000_000;
+        boolean installed = denomination.exists() && denomination.length() > 1_000_000
+                && securitycf.exists() && securitycf.length() > 1_000_000;
         Log.d(TAG, "Package installed check: " + installed
-                + " counterfeit=" + (counterfeit.exists() ? counterfeit.length() + "B" : "missing")
-                + " security=" + (security.exists() ? security.length() + "B" : "missing"));
+                + " denomination=" + (denomination.exists() ? denomination.length() + "B" : "missing")
+                + " securitycf=" + (securitycf.exists() ? securitycf.length() + "B" : "missing"));
         return installed;
     }
 
@@ -145,8 +145,8 @@ public class MLSettingsActivity extends AppCompatActivity {
     }
 
     private static final String[] BUNDLED_MODELS = {
-            "counterfeit_best_float32.tflite",
-            "security_best_int8.tflite"
+            "denomination2_int8.tflite",
+            "securitycf_int8.tflite"
     };
 
     private void startDownload() {
@@ -166,7 +166,7 @@ public class MLSettingsActivity extends AppCompatActivity {
                 for (int i = 0; i < totalModels; i++) {
                     String modelName = BUNDLED_MODELS[i];
                     File destFile = new File(modelsDir, modelName);
-                    String displayName = modelName.contains("counterfeit") ? "Counterfeit Detection" : "Security Features";
+                    String displayName = modelName.contains("denomination") ? "Denomination Detection" : "Security & Counterfeit";
 
                     int modelIndex = i;
                     runOnUiThread(() -> {

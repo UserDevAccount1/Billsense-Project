@@ -243,7 +243,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:fontFamily="@font/poppins_light"
-                            android:text="Counterfeit Detection Model"
+                            android:text="Denomination Detection Model"
                             android:textColor="#444444"
                             android:textSize="12sp" />
 
@@ -251,7 +251,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/poppins_bold"
-                            android:text="11.7 MB"
+                            android:text="11.5 MB"
                             android:textColor="#444444"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -268,7 +268,7 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:fontFamily="@font/poppins_light"
-                            android:text="Security Feature Detection Model"
+                            android:text="Security &amp; Counterfeit Model"
                             android:textColor="#444444"
                             android:textSize="12sp" />
 
@@ -276,7 +276,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/poppins_bold"
-                            android:text="10.9 MB"
+                            android:text="11.5 MB"
                             android:textColor="#444444"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -307,7 +307,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/poppins_bold"
-                            android:text="22.6 MB"
+                            android:text="23 MB"
                             android:textColor="@color/colorPrimary"
                             android:textSize="13sp" />
                     </LinearLayout>
