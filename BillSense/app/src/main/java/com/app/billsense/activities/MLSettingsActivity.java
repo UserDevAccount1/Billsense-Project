@@ -68,34 +68,41 @@ public class MLSettingsActivity extends AppCompatActivity {
     }
 
     private void loadConfig() {
+        // Show the DEVICE's effective mode immediately — works fully offline.
+        applyModeToUi(modelManager.isOnDeviceMode());
+        updatePackageStatus();
+
+        // Refresh the model list from the server in the background. The
+        // result must never flip the user's toggle — only the package status.
         modelManager.fetchConfig(new TFLiteModelManager.ConfigCallback() {
             @Override
             public void onConfigLoaded(String mode) {
                 runOnUiThread(() -> {
-                    boolean isOffline = "on_device".equals(mode);
-                    isUpdatingSwitch = true;
-                    binding.modeSwitch.setChecked(isOffline);
-                    isUpdatingSwitch = false;
-                    if (isOffline) {
-                        setOfflineMode();
-                    } else {
-                        setOnlineMode();
-                    }
+                    applyModeToUi(modelManager.isOnDeviceMode());
                     updatePackageStatus();
                 });
             }
 
             @Override
             public void onConfigError(String error) {
+                // Offline or server unreachable — keep showing the device mode.
                 runOnUiThread(() -> {
-                    isUpdatingSwitch = true;
-                    binding.modeSwitch.setChecked(false);
-                    isUpdatingSwitch = false;
-                    setOnlineMode();
+                    applyModeToUi(modelManager.isOnDeviceMode());
                     updatePackageStatus();
                 });
             }
         });
+    }
+
+    private void applyModeToUi(boolean isOffline) {
+        isUpdatingSwitch = true;
+        binding.modeSwitch.setChecked(isOffline);
+        isUpdatingSwitch = false;
+        if (isOffline) {
+            setOfflineMode();
+        } else {
+            setOnlineMode();
+        }
     }
 
     private void setOnlineMode() {
@@ -112,17 +119,25 @@ public class MLSettingsActivity extends AppCompatActivity {
                 "Scans are processed directly on your phone using the downloaded models. No internet required — results are instant and your images stay private on your device.");
     }
 
+    /** Returns the best available cached file for a model: float32 first, int8 fallback. */
+    public static File findCachedModel(File modelsDir, String baseName) {
+        File f32 = new File(modelsDir, baseName + "_float32.tflite");
+        if (f32.exists() && f32.length() > 1_000_000) return f32;
+        File i8 = new File(modelsDir, baseName + "_int8.tflite");
+        if (i8.exists() && i8.length() > 1_000_000) return i8;
+        return null;
+    }
+
     private boolean isPackageInstalled() {
         File modelsDir = new File(getFilesDir(), "tflite_models");
         if (!modelsDir.exists()) return false;
-        File denomination = new File(modelsDir, "denomination2_int8.tflite");
-        File securitycf = new File(modelsDir, "securitycf_int8.tflite");
-        // Check both exist AND have real content (> 1MB each)
-        boolean installed = denomination.exists() && denomination.length() > 1_000_000
-                && securitycf.exists() && securitycf.length() > 1_000_000;
+        // Either precision counts as installed; loaders prefer float32.
+        File denomination = findCachedModel(modelsDir, "denomination2");
+        File securitycf = findCachedModel(modelsDir, "securitycf");
+        boolean installed = denomination != null && securitycf != null;
         Log.d(TAG, "Package installed check: " + installed
-                + " denomination=" + (denomination.exists() ? denomination.length() + "B" : "missing")
-                + " securitycf=" + (securitycf.exists() ? securitycf.length() + "B" : "missing"));
+                + " denomination=" + (denomination != null ? denomination.getName() : "missing")
+                + " securitycf=" + (securitycf != null ? securitycf.getName() : "missing"));
         return installed;
     }
 
@@ -211,16 +226,14 @@ public class MLSettingsActivity extends AppCompatActivity {
                     runOnUiThread(() -> binding.downloadStatus.setText(dn + " installed ✓"));
                 }
 
-                isDownloading = false;
+                // Bundled (compact) models are in place — offline mode is usable
+                // right away. Now fetch the high-accuracy float32 models from the
+                // server config in the background (needs internet, ~85 MB once).
                 runOnUiThread(() -> {
-                    binding.downloadProgress.setProgress(100);
-                    binding.downloadProgress.setVisibility(View.GONE);
-                    binding.downloadStatus.setVisibility(View.GONE);
                     updatePackageStatus();
-                    Toast.makeText(MLSettingsActivity.this,
-                            "Scanning package installed! You can now use offline mode.",
-                            Toast.LENGTH_LONG).show();
+                    binding.downloadStatus.setText("Fetching high-accuracy models…");
                 });
+                downloadHighAccuracyModels();
 
             } catch (Exception e) {
                 isDownloading = false;
@@ -236,6 +249,50 @@ public class MLSettingsActivity extends AppCompatActivity {
                 });
             }
         }).start();
+    }
+
+    /**
+     * Downloads the high-accuracy models named in ml_config (float32) via the
+     * model manager. Non-fatal: the bundled compact models keep offline mode
+     * working if this fails (e.g. no internet during install).
+     */
+    private void downloadHighAccuracyModels() {
+        modelManager.downloadEnabledModels(new TFLiteModelManager.DownloadCallback() {
+            @Override
+            public void onProgress(String modelName, int percentComplete) {
+                runOnUiThread(() -> {
+                    binding.downloadProgress.setVisibility(View.VISIBLE);
+                    binding.downloadStatus.setVisibility(View.VISIBLE);
+                    binding.downloadProgress.setProgress(percentComplete);
+                    binding.downloadStatus.setText("High-accuracy " + modelName + "… " + percentComplete + "%");
+                });
+            }
+
+            @Override
+            public void onModelReady(String modelName, File modelFile) {
+                Log.d(TAG, "High-accuracy model ready: " + modelFile.getName());
+            }
+
+            @Override
+            public void onAllModelsReady(Map<String, File> modelFiles) {
+                isDownloading = false;
+                boolean gotAll = modelFiles.size() >= 2;
+                runOnUiThread(() -> {
+                    binding.downloadProgress.setVisibility(View.GONE);
+                    binding.downloadStatus.setVisibility(View.GONE);
+                    updatePackageStatus();
+                    Toast.makeText(MLSettingsActivity.this,
+                            gotAll ? "Scanning package installed with high-accuracy models! Offline mode is ready."
+                                   : "Package installed. High-accuracy models will download next time you're online.",
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+
+            @Override
+            public void onError(String modelName, String error) {
+                Log.w(TAG, "High-accuracy download failed for " + modelName + ": " + error);
+            }
+        });
     }
 
     private void deletePackage() {
@@ -258,31 +315,11 @@ public class MLSettingsActivity extends AppCompatActivity {
     }
 
     private void saveMode(String mode) {
-        // Save locally first (critical for offline mode to work without network)
-        getSharedPreferences("ml_config_prefs", MODE_PRIVATE)
-                .edit()
-                .putString("scan_mode", mode)
-                .apply();
-        Log.d(TAG, "Mode saved locally: " + mode);
-
-        // Also save to Firebase RTDB via REST (best-effort, may fail offline)
-        new Thread(() -> {
-            try {
-                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-                String json = "{\"scan_mode\":\"" + mode + "\",\"updated_at\":\"" +
-                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) +
-                        "\",\"updated_by\":\"user\"}";
-                okhttp3.RequestBody body = okhttp3.RequestBody.create(json, okhttp3.MediaType.parse("application/json"));
-                okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url("https://bill-sense-aec6b-default-rtdb.firebaseio.com/ml_config.json")
-                        .patch(body)
-                        .build();
-                okhttp3.Response response = client.newCall(request).execute();
-                Log.d(TAG, "Saved mode to Firebase: " + mode + " status=" + response.code());
-                response.close();
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to save mode: " + e.getMessage());
-            }
-        }).start();
+        // Per-DEVICE choice — authoritative on this phone, survives config
+        // refetches, and needs no network. (The old direct RTDB write was
+        // always rejected by the auth!=null rule, and the next online config
+        // fetch silently flipped the device back to cloud mode.)
+        modelManager.setDeviceScanMode(mode);
+        Log.d(TAG, "Device scan mode saved: " + mode);
     }
 }

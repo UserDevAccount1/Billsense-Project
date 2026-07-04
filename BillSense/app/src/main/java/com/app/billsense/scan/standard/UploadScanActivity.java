@@ -111,18 +111,25 @@ public class UploadScanActivity extends AppCompatActivity {
      * Fetches ML config from Firebase and prepares on-device models if configured.
      */
     private void initMlConfig() {
+        // The device's saved mode works without network — if the user chose
+        // offline, load the cached models immediately (config fetch would
+        // fail with no internet, which is exactly when offline mode matters).
+        if (modelManager.isOnDeviceMode()) {
+            prepareOnDeviceModels();
+        }
         modelManager.fetchConfig(new TFLiteModelManager.ConfigCallback() {
             @Override
             public void onConfigLoaded(String mode) {
                 Log.d(TAG, "ML config loaded. Mode: " + mode);
-                if (modelManager.isOnDeviceMode()) {
+                if (modelManager.isOnDeviceMode() && !onDeviceReady) {
                     prepareOnDeviceModels();
                 }
             }
 
             @Override
             public void onConfigError(String error) {
-                Log.w(TAG, "ML config fetch failed: " + error + " — using cached/default (cloud)");
+                Log.w(TAG, "ML config fetch failed: " + error + " — using device mode: "
+                        + modelManager.getScanMode());
             }
         });
     }
@@ -224,14 +231,9 @@ public class UploadScanActivity extends AppCompatActivity {
         binding.scanButton.setEnabled(false);
         Log.d(TAG, "Starting upload scan with file: " + imageFile.getName() + " size: " + imageFile.length());
 
-        // Route based on ML config mode — check local prefs directly as well
+        // Route based on the device's effective scan mode (per-device choice
+        // first, global default otherwise) — works with no network.
         boolean isOffline = modelManager.isOnDeviceMode();
-        if (!isOffline) {
-            // Double-check local prefs in case Firebase config fetch failed
-            String localMode = getSharedPreferences("ml_config_prefs", MODE_PRIVATE)
-                    .getString("scan_mode", "cloud");
-            isOffline = "on_device".equals(localMode);
-        }
 
         if (isOffline && onDeviceReady) {
             Log.d(TAG, "Using ON-DEVICE inference");
@@ -258,30 +260,28 @@ public class UploadScanActivity extends AppCompatActivity {
      */
     private void tryLoadCachedModels() {
         File modelsDir = new File(getFilesDir(), "tflite_models");
-        // Prefer int8 (lighter) but fall back to float32 — works with either ml_config.
-        File securitycfFile = new File(modelsDir, "securitycf_int8.tflite");
-        if (!securitycfFile.exists()) securitycfFile = new File(modelsDir, "securitycf_float32.tflite");
-        File denominationFile = new File(modelsDir, "denomination2_int8.tflite");
-        if (!denominationFile.exists()) denominationFile = new File(modelsDir, "denomination2_float32.tflite");
+        // Prefer the high-accuracy float32 models; fall back to bundled int8.
+        File securitycfFile = com.app.billsense.activities.MLSettingsActivity.findCachedModel(modelsDir, "securitycf");
+        File denominationFile = com.app.billsense.activities.MLSettingsActivity.findCachedModel(modelsDir, "denomination2");
 
-        if (securitycfFile.exists() && securitycfFile.length() > 1_000_000) {
+        if (securitycfFile != null) {
             if (securitycfInference == null) {
                 securitycfInference = new TFLiteInference("securitycf");
             }
             if (!securitycfInference.isLoaded()) {
                 securitycfInference.loadModel(securitycfFile);
             }
-            Log.d(TAG, "securitycf model loaded from cache: " + securitycfInference.isLoaded());
+            Log.d(TAG, "securitycf model loaded from cache (" + securitycfFile.getName() + "): " + securitycfInference.isLoaded());
         }
 
-        if (denominationFile.exists() && denominationFile.length() > 1_000_000) {
+        if (denominationFile != null) {
             if (denominationInference == null) {
                 denominationInference = new TFLiteInference("denomination");
             }
             if (!denominationInference.isLoaded()) {
                 denominationInference.loadModel(denominationFile);
             }
-            Log.d(TAG, "denomination model loaded from cache: " + denominationInference.isLoaded());
+            Log.d(TAG, "denomination model loaded from cache (" + denominationFile.getName() + "): " + denominationInference.isLoaded());
         }
 
         onDeviceReady = securitycfInference != null && securitycfInference.isLoaded();

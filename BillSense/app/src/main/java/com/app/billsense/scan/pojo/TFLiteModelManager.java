@@ -37,6 +37,10 @@ public class TFLiteModelManager {
     private static final String TAG = "TFLiteModelManager";
     private static final String PREFS_NAME = "ml_config_prefs";
     private static final String KEY_SCAN_MODE = "scan_mode";
+    // The user's explicit per-device choice. Takes precedence over the global
+    // ml_config scan_mode, which is only a default for fresh installs — the
+    // server must never flip a device the user set to offline back to cloud.
+    private static final String KEY_DEVICE_SCAN_MODE = "device_scan_mode";
     private static final String KEY_ACTIVE_MODELS_JSON = "active_models_json";
 
     private static final String FIREBASE_DB_URL =
@@ -54,6 +58,7 @@ public class TFLiteModelManager {
     private final Gson gson;
 
     private String scanMode = MODE_CLOUD;
+    private String deviceScanMode = null;   // null = user never chose; follow global
     private final ConcurrentHashMap<String, ModelInfo> activeModels = new ConcurrentHashMap<>();
     private boolean configLoaded = false;
 
@@ -103,6 +108,7 @@ public class TFLiteModelManager {
 
         // Load cached config
         scanMode = prefs.getString(KEY_SCAN_MODE, MODE_CLOUD);
+        deviceScanMode = prefs.getString(KEY_DEVICE_SCAN_MODE, null);
         loadCachedActiveModels();
     }
 
@@ -216,17 +222,28 @@ public class TFLiteModelManager {
     }
 
     /**
-     * Returns current scan mode: "cloud" or "on_device".
+     * Returns the effective scan mode: the user's per-device choice if they
+     * made one, otherwise the global ml_config default.
      */
     public String getScanMode() {
-        return scanMode;
+        return deviceScanMode != null ? deviceScanMode : scanMode;
+    }
+
+    /**
+     * Persists the user's per-device scan mode choice. This survives config
+     * refetches and works fully offline.
+     */
+    public void setDeviceScanMode(@NonNull String mode) {
+        deviceScanMode = mode;
+        prefs.edit().putString(KEY_DEVICE_SCAN_MODE, mode).apply();
+        Log.d(TAG, "Device scan mode set: " + mode);
     }
 
     /**
      * Returns true if on-device inference is active.
      */
     public boolean isOnDeviceMode() {
-        return MODE_ON_DEVICE.equals(scanMode);
+        return MODE_ON_DEVICE.equals(getScanMode());
     }
 
     /**

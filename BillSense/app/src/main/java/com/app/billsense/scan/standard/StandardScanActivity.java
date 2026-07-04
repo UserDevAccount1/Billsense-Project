@@ -159,13 +159,14 @@ public class StandardScanActivity extends AppCompatActivity implements RealTimeS
     private void loadOfflineModels() {
         try {
             File dir = new File(getFilesDir(), "tflite_models");
-            File denomF = new File(dir, "denomination2_int8.tflite");
-            File scfF = new File(dir, "securitycf_int8.tflite");
-            if (denomF.exists() && denomF.length() > 1_000_000) {
+            // Prefer the high-accuracy float32 models; fall back to bundled int8.
+            File denomF = com.app.billsense.activities.MLSettingsActivity.findCachedModel(dir, "denomination2");
+            File scfF = com.app.billsense.activities.MLSettingsActivity.findCachedModel(dir, "securitycf");
+            if (denomF != null) {
                 denominationInference = new TFLiteInference("denomination");
                 denominationInference.loadModel(denomF);
             }
-            if (scfF.exists() && scfF.length() > 1_000_000) {
+            if (scfF != null) {
                 securitycfInference = new TFLiteInference("securitycf");
                 securitycfInference.loadModel(scfF);
             }
