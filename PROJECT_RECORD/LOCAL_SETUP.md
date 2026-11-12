@@ -53,3 +53,13 @@ These stay on the D: drive (or external/cloud storage), not in git.
 
 All branches are on GitHub. `main-march-snapshot` (March TFLite offline ML + admin views + tooling work)
 was pushed on 2026-11-12; before that it existed only locally.
+
+## 6. TFLite INT8 export venv (`D:\bsexport_venv`, removed 2026-11-12)
+
+Used by `training/export_tflite_int8.py`. Python **3.12.10**, run with `TF_USE_LEGACY_KERAS=1`.
+Exact package list: `training/requirements-bsexport-venv.txt` (82 packages). Recreate with:
+
+```powershell
+py -3.12 -m venv D:\bsexport_venv
+D:\bsexport_venv\Scripts\python -m pip install -r training\requirements-bsexport-venv.txt
+```
